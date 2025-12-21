@@ -4,11 +4,11 @@ A machine learning-powered resume screening application that classifies resumes 
 
 ## Features
 
-- **🤖 KNN Classification**: Automatically categorizes resumes into job types using K-Nearest Neighbors
-- **🔍 Semantic Analysis**: Calculates similarity between resumes and job descriptions using sentence transformers
-- **📄 PDF Processing**: Extracts and parses text from PDF resumes
-- **📊 Interactive Dashboard**: Streamlit web interface for easy use
-- **📈 Confidence Scoring**: Provides probability scores for predictions
+- **KNN Classification**: Automatically categorizes resumes into job types using K-Nearest Neighbors
+- **Semantic Analysis**: Calculates similarity between resumes and job descriptions using sentence transformers
+- **PDF Processing**: Extracts and parses text from PDF resumes
+- **Interactive Dashboard**: Streamlit web interface for easy use
+- **Confidence Scoring**: Provides probability scores for predictions
 
 ## Installation
 
