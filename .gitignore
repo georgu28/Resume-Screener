@@ -1,0 +1,29 @@
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Data archives / caches
+*.zip
+.streamlit/secrets.toml
+
+# Raw datasets (fetch with scripts/download_data.py). Trained model in models/ IS committed.
+/data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Model cache (but keep the committed production model under models/)
+*.joblib
+!models/*.joblib
