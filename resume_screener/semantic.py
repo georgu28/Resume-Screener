@@ -1,9 +1,5 @@
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.feature_extraction.text import TfidfVectorizer
-from parser import read_pdf
-from parser import get_sections
+from resume_screener.parser import read_pdf
+from resume_screener.parser import get_sections
 from sentence_transformers import SentenceTransformer
 import sys
 import re
@@ -14,6 +10,12 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Sections that carry the signal we want to compare on. When none of these are
+# found in a document, we fall back to the full text so the embedding is never
+# built from an empty string.
+RESUME_SECTIONS = ["experience", "projects", "skills"]
+JOB_SECTIONS = ["responsibilities", "requirements", "description"]
 
 
 class SemanticMatcher:
@@ -43,65 +45,62 @@ class SemanticMatcher:
 
     def get_resume_content(self, resume_path: str) -> None:
         """
-        Extract and process resume content from PDF file.
-        
-        Args:
-            resume_path (str): Path to the resume PDF file
-            
-        Raises:
-            Exception: If PDF cannot be read or processed
+        Extract resume content from a PDF and append it to ``self.sentences``.
+
+        Kept for backward compatibility; new code should prefer
+        :meth:`embed_resume`.
         """
-        try:
-            resume_data = read_pdf(resume_path)
-            
-            # Extract relevant sections for resume analysis
-            sections_to_extract = ["experience", "projects", "skills"]
-            combined_content = ""
-            
-            for section in sections_to_extract:
-                section_content = self._get_section_data(resume_data, section)
-                combined_content += section_content + " "
-            
-            if combined_content.strip():
-                self.sentences.append(self._transform_text(combined_content))
-                logger.info(f"Successfully processed resume: {resume_path}")
-            else:
-                logger.warning(f"No relevant content found in resume: {resume_path}")
-                
-        except Exception as e:
-            logger.error(f"Error processing resume {resume_path}: {e}")
-            raise
-    
+        self.sentences.append(self._relevant_text(read_pdf(resume_path), RESUME_SECTIONS))
+        logger.info(f"Successfully processed resume: {resume_path}")
+
     def get_job_description_content(self, description_path: str) -> None:
         """
-        Extract and process job description content from PDF file.
-        
-        Args:
-            description_path (str): Path to the job description PDF file
-            
-        Raises:
-            Exception: If PDF cannot be read or processed
+        Extract job-description content from a PDF and append it to
+        ``self.sentences``.
+
+        Kept for backward compatibility; new code should prefer
+        :meth:`embed_job`.
         """
-        try:
-            description_data = read_pdf(description_path)
-            
-            # Extract relevant sections for job description analysis
-            sections_to_extract = ["responsibilities", "requirements", "description"]
-            combined_content = ""
-            
-            for section in sections_to_extract:
-                section_content = self._get_section_data(description_data, section)
-                combined_content += section_content + " "
-            
-            if combined_content.strip():
-                self.sentences.append(self._transform_text(combined_content))
-                logger.info(f"Successfully processed job description: {description_path}")
-            else:
-                logger.warning(f"No relevant content found in job description: {description_path}")
-                
-        except Exception as e:
-            logger.error(f"Error processing job description {description_path}: {e}")
-            raise
+        self.sentences.append(self._relevant_text(read_pdf(description_path), JOB_SECTIONS))
+        logger.info(f"Successfully processed job description: {description_path}")
+
+    def _relevant_text(self, text: str, section_names: List[str]) -> str:
+        """
+        Join the requested sections into one cleaned string.
+
+        If none of the requested sections are found (common with unusual
+        resume layouts), fall back to the full document so we never build an
+        embedding from an empty string.
+
+        Args:
+            text (str): Full document text
+            section_names (List[str]): Section keywords to pull out
+
+        Returns:
+            str: Cleaned, lower-cased text ready for encoding
+        """
+        combined = " ".join(self._get_section_data(text, s) for s in section_names).strip()
+        if not combined:
+            logger.warning("No target sections found; falling back to full document text")
+            combined = text
+        return self._transform_text(combined)
+
+    def embed(self, text: str) -> np.ndarray:
+        """Encode text into a unit-normalized embedding (so dot == cosine)."""
+        return self.model.encode([text], normalize_embeddings=True)[0]
+
+    def embed_resume(self, resume_path: str) -> np.ndarray:
+        """Read a resume PDF and return its embedding."""
+        return self.embed(self._relevant_text(read_pdf(resume_path), RESUME_SECTIONS))
+
+    def embed_job(self, description_path: str) -> np.ndarray:
+        """Read a job-description PDF and return its embedding."""
+        return self.embed(self._relevant_text(read_pdf(description_path), JOB_SECTIONS))
+
+    @staticmethod
+    def cosine(a: np.ndarray, b: np.ndarray) -> float:
+        """Cosine similarity between two unit-normalized embeddings."""
+        return float(np.dot(a, b))
 
     def _get_section_data(self, text: str, section: str) -> str:
         """
