@@ -4,17 +4,20 @@ import sys
 import pdfplumber
 import logging
 from typing import Dict, List, Tuple
-from config import SECTION_TITLES, REGEX_PATTERNS
+from resume_screener.config import SECTION_TITLES, REGEX_PATTERNS
 
 # Configure logging for better error tracking
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Connector words ignored when deciding if a short line is a section header.
+_CONNECTORS = {"and", "of", "the", "a", "an"}
+
 
 def read_pdf(name: str) -> str:
     """
-    Extract text from the first page of a PDF file.
-    
+    Extract text from every page of a PDF file.
+
     Args:
         name (str): Path to the PDF file
         
@@ -134,16 +137,23 @@ def get_details(text: str) -> Tuple[Dict[str, str], str]:
 
 def section_title(line: str) -> str:
     """
-    Identify if a line contains a section title.
-    
+    Identify if a line is a section header.
+
+    A header is a short line (few words) whose words are mostly a known
+    section keyword, e.g. "Experience", "WORK EXPERIENCE", "Technical Skills",
+    "Relevant Coursework and Projects". Punctuation and connector words
+    ("and", "&", "of") are ignored so multi-word headers still match.
+
     Args:
         line (str): Line of text to check
-        
+
     Returns:
-        str: Section title if found, empty string otherwise
+        str: Matched section keyword if the line looks like a header, else ""
     """
-    words = line.lower().split()
-    if len(words) > 2:
+    # Keep alphabetic tokens only; drops bullets, colons, digits, etc.
+    words = [w for w in re.findall(r"[a-z]+", line.lower()) if w not in _CONNECTORS]
+    # Real section headers are short; longer lines are body content.
+    if not words or len(words) > 3:
         return ""
     for word in words:
         if word in SECTION_TITLES:

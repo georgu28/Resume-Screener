@@ -6,7 +6,7 @@ import os
 import logging
 from typing import List, Dict, Optional
 import re
-from config import LOGGING_CONFIG
+from resume_screener.config import LOGGING_CONFIG
 
 def setup_logging(level: str = LOGGING_CONFIG['level']) -> logging.Logger:
     """
