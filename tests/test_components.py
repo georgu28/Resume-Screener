@@ -6,13 +6,13 @@ import sys
 import os
 from pathlib import Path
 
-# Add the project root to Python path
-project_root = Path(__file__).parent
+# Add the project root to Python path so the resume_screener package imports
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from parser import read_pdf, get_details, get_sections
-from knn_class import ResumeClassifier
-from semantic import SemanticMatcher
+from resume_screener.parser import read_pdf, get_details, get_sections
+from resume_screener.classifier import ResumeClassifier
+from resume_screener.semantic import SemanticMatcher
 import logging
 
 # Set up logging
@@ -47,9 +47,9 @@ def test_parser():
     else:
         print("No PDF files found in pdfs/ directory")
 
-def test_knn_classifier():
-    """Test the KNN classifier."""
-    print("\nTesting KNN classifier...")
+def test_classifier():
+    """Test the resume category classifier."""
+    print("\nTesting classifier...")
     
     try:
         # Initialize classifier
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     print("=" * 50)
     
     test_parser()
-    test_knn_classifier()
+    test_classifier()
     test_semantic_matcher()
     test_integration()
     
