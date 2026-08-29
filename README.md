@@ -1,173 +1,96 @@
 # MDST Resume Screener
 
-A machine learning-powered resume screening application that classifies resumes into job categories and calculates semantic similarity with job descriptions.
+A machine-learning resume screener that (1) classifies resumes into job categories and
+(2) ranks them against open roles by semantic similarity — served through a Streamlit app.
 
-## Features
+## What it does
 
-- **KNN Classification**: Automatically categorizes resumes into job types using K-Nearest Neighbors
-- **Semantic Analysis**: Calculates similarity between resumes and job descriptions using sentence transformers
-- **PDF Processing**: Extracts and parses text from PDF resumes
-- **Interactive Dashboard**: Streamlit web interface for easy use
-- **Confidence Scoring**: Provides probability scores for predictions
+- **Category classification** — a TF-IDF + calibrated LinearSVC model predicts a resume's
+  job category, trained on **12,000+ distinct labeled resumes across 43 categories**.
+- **Semantic job matching** — sentence-transformer embeddings + cosine similarity rank an
+  uploaded resume against the open roles.
+- **PDF parsing** — extracts text and resume sections (with a full-text fallback for
+  unusual layouts).
+- **Interactive app** — Streamlit UI with cached models, so analysis is fast after the
+  first load.
 
-## Installation
+## Model performance
 
-1. Clone the repository:
+Held-out evaluation (20% test split, deduplicated, TF-IDF fit on train only):
+
+| Metric | Score |
+|---|---|
+| Distinct resumes | 12,085 |
+| Categories | 43 |
+| Top-1 accuracy | **82.0%** |
+| Top-3 accuracy | **94.0%** |
+| Macro F1 | 0.82 |
+
+Model: `TfidfVectorizer(ngram_range=(1,2), max_features=30000, sublinear_tf=True)` →
+`CalibratedClassifierCV(LinearSVC())`. Reproduce with `python train.py`.
+
+## Setup
+
 ```bash
 git clone https://github.com/georgu28/MDST-Resume-Screener.git
 cd MDST-Resume-Screener
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
+
+# Download the dataset (~54 MB, from Hugging Face — no credentials needed) and train.
+# This writes models/resume_clf.joblib, which the app loads.
+python train.py
 ```
 
-3. Download NLTK data (if needed):
-```python
-import nltk
-nltk.download('punkt')
-nltk.download('stopwords')
-```
+## Run the app
 
-## Usage
-
-### Web Interface
-Run the Streamlit app:
 ```bash
 streamlit run app.py
 ```
 
-### Command Line Usage
+Upload a resume PDF to see its best-matching role, per-role similarity scores, and its
+predicted category with confidence.
 
-#### Resume Classification
+## Command-line usage
+
+Run examples from the repo root (so the `resume_screener` package resolves):
+
 ```python
-from knn_class import ResumeClassifier
+from resume_screener.classifier import ResumeClassifier
+clf = ResumeClassifier()                       # loads models/resume_clf.joblib
+print(clf.predict_pdf("pdfs/jakes-resume.pdf"))
+print(clf.get_prediction_probabilities("pdfs/jakes-resume.pdf"))
 
-classifier = ResumeClassifier()
-category = classifier.predict_pdf("path/to/resume.pdf")
-print(f"Predicted category: {category}")
+from resume_screener.semantic import SemanticMatcher
+m = SemanticMatcher()
+resume = m.embed_resume("pdfs/jakes-resume.pdf")
+job = m.embed_job("pdfs/java.pdf")
+print(m.cosine(resume, job))                   # cosine similarity in [0, 1]
 ```
 
-#### Semantic Similarity
-```python
-from semantic import SemanticMatcher
-
-matcher = SemanticMatcher()
-matcher.get_resume_content("path/to/resume.pdf")
-matcher.get_job_description_content("path/to/job_description.pdf")
-
-similarities = matcher.calculate_similarities()
-print(f"Similarity score: {similarities[1].item():.3f}")
-```
-
-#### PDF Parsing
-```python
-from parser import read_pdf, get_details, get_sections
-
-# Extract text
-text = read_pdf("resume.pdf")
-
-# Extract personal details
-details, cleaned_text = get_details(text)
-print(f"Email: {details['email']}")
-print(f"Phone: {details['phone']}")
-
-# Extract sections
-sections = get_sections(text)
-print(f"Experience: {sections['experience']}")
-```
-
-## Project Structure
+## Project structure
 
 ```
-MDST-Resume-Screener/
-├── app.py                 # Streamlit web interface
-├── parser.py              # PDF parsing and text extraction
-├── semantic.py            # Semantic similarity analysis
-├── knn_class.py          # KNN classification model
-├── requirements.txt       # Python dependencies
-├── UpdatedResumeDataSet.csv  # Training dataset
-├── pdfs/                 # Sample PDFs
-│   ├── bryan-resume.pdf
-│   ├── john-resume.pdf
-│   ├── full-stack.pdf
-│   └── ...
-└── notebooks/            # Jupyter notebooks for experimentation
-    ├── knn_resume.ipynb
-    ├── semantics.ipynb
-    └── ...
+app.py                       # Streamlit entry point (run this)
+train.py                     # Train/evaluate the classifier -> models/resume_clf.joblib
+resume_screener/             # Library package
+  parser.py                  #   PDF text + section extraction
+  classifier.py              #   ResumeClassifier — loads the trained sklearn pipeline
+  semantic.py                #   SemanticMatcher — embeddings + cosine similarity
+  rag.py                     #   RagEngine — FAISS retrieval + Claude fit analysis
+  config.py                  #   Section titles + regex patterns
+  utils.py                   #   Text helpers
+scripts/download_data.py     # Fetch the Resume-Atlas dataset from Hugging Face
+tests/test_components.py     # Component smoke tests
+models/                      # Trained model + metrics.json (committed)
+data/                        # Raw dataset (git-ignored; fetched by download_data.py)
+pdfs/                        # Sample resumes and job descriptions
 ```
-
-## Models and Algorithms
-
-### KNN Classifier
-- **Algorithm**: K-Nearest Neighbors with TF-IDF vectorization
-- **Features**: Text content vectorized using TfidfVectorizer
-- **Categories**: Software Engineer, Data Scientist, Product Manager, etc.
-- **Evaluation**: Classification report with precision, recall, F1-score
-
-### Semantic Similarity
-- **Model**: SentenceTransformer (all-MiniLM-L6-v2)
-- **Method**: Cosine similarity between resume and job description embeddings
-- **Sections**: Analyzes experience, skills, projects vs. requirements, responsibilities
-
-## API Reference
-
-### ResumeClassifier Class
-
-#### Methods
-- `__init__(dataset_path, n_neighbors)`: Initialize classifier
-- `predict_pdf(pdf_path)`: Predict category for PDF resume
-- `predict_text(text)`: Predict category for text
-- `get_prediction_probabilities(pdf_path)`: Get confidence scores
-- `get_categories()`: List all available categories
-
-### SemanticMatcher Class
-
-#### Methods
-- `__init__(model_name)`: Initialize with sentence transformer model
-- `get_resume_content(resume_path)`: Process resume PDF
-- `get_job_description_content(description_path)`: Process job description PDF
-- `calculate_similarities()`: Compute similarity scores
-- `batch_compare_resumes(resume_paths, job_paths)`: Batch processing
-
-### Parser Functions
-
-#### Functions
-- `read_pdf(name)`: Extract text from PDF
-- `get_email(text)`, `get_phone(text)`, `get_gpa(text)`: Extract specific info
-- `get_details(text)`: Extract all personal details
-- `get_sections(text)`: Parse into resume sections
 
 ## Dataset
 
-The project uses the UpdatedResumeDataSet.csv which contains:
-- **Resume**: Text content of resumes
-- **Category**: Job category labels
-- **Size**: 1000+ resume samples across multiple categories
-
-## Performance
-
-- **KNN Accuracy**: ~85% on test set
-- **Semantic Similarity**: Correlation with human judgments: ~0.78
-- **Processing Speed**: ~2-3 seconds per resume
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+[Resume-Atlas](https://huggingface.co/datasets/ahmedheakl/resume-atlas) — 13k+ labeled
+resumes over 43 categories, downloaded automatically by `scripts/download_data.py`.
 
 ## Acknowledgments
 
-- MDST (Michigan Data Science Team) for project inspiration
-- Sentence Transformers library for semantic analysis
-- scikit-learn for machine learning tools
-- Streamlit for the web interface
+Michigan Data Science Team (MDST) · sentence-transformers · scikit-learn · Streamlit.
