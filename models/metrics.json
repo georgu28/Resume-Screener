@@ -1,0 +1,8 @@
+{
+  "n_resumes": 12085,
+  "n_categories": 43,
+  "holdout_top1_accuracy": 0.8204,
+  "holdout_top3_accuracy": 0.9404,
+  "holdout_macro_f1": 0.8205,
+  "trained_at": "2026-08-29"
+}
