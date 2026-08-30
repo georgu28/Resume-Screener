@@ -30,12 +30,75 @@ def load_metrics() -> dict:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Open roles to score every uploaded resume against.
+# Open roles to score every uploaded resume against. Each value is the job
+# description text itself (chunked for RAG retrieval and embedded whole for the
+# semantic match) — edit these freely to change the roles, no PDF needed.
 JOB_DESCRIPTIONS = {
-    "Full Stack Developer": "pdfs/full-stack.pdf",
-    "Front End Developer": "pdfs/front-end.pdf",
-    "Product Manager": "pdfs/product-manager.pdf",
-    "Java Developer": "pdfs/java.pdf",
+    "Backend Engineer": (
+        "Backend Engineer\n"
+        "Design, build, and operate scalable server-side services and APIs.\n"
+        "Build and maintain REST and gRPC APIs and microservices.\n"
+        "Design relational and NoSQL data models; optimize queries and indexes.\n"
+        "Write clean, well-tested Python (or Go/Java) backend services.\n"
+        "Own reliability, latency, observability, and on-call for production systems.\n"
+        "Requirements: strong Python and SQL; PostgreSQL, Redis; REST API design;\n"
+        "Docker containers; CI/CD pipelines; AWS or GCP; unit and integration testing;\n"
+        "distributed systems, caching, message queues, and event-driven architecture."
+    ),
+    "Frontend Engineer": (
+        "Frontend Engineer\n"
+        "Build responsive, accessible web interfaces and design systems.\n"
+        "Develop UI in React with TypeScript, HTML, and modern CSS.\n"
+        "Implement state management, data fetching, and component libraries.\n"
+        "Ensure accessibility (WCAG), cross-browser support, and performance.\n"
+        "Collaborate with designers to ship pixel-accurate, interactive experiences.\n"
+        "Requirements: JavaScript/TypeScript, React, HTML, CSS; responsive design;\n"
+        "web accessibility; frontend testing (Jest, Playwright); build tooling (Vite,\n"
+        "webpack); REST/GraphQL API integration; Core Web Vitals and performance."
+    ),
+    "Full Stack Engineer": (
+        "Full Stack Engineer\n"
+        "Own features end to end, from database to user interface.\n"
+        "Build backend APIs in Python or Node and frontends in React/TypeScript.\n"
+        "Model data, write services, and design the UI that consumes them.\n"
+        "Ship, deploy, and monitor features across the whole stack.\n"
+        "Requirements: Python or Node.js plus React and TypeScript; SQL databases;\n"
+        "REST API design; Docker and CI/CD; cloud deployment (AWS/GCP); testing across\n"
+        "frontend and backend; comfort moving fluidly between client and server."
+    ),
+    "Machine Learning Engineer": (
+        "Machine Learning Engineer\n"
+        "Build, train, evaluate, and deploy machine learning models in production.\n"
+        "Develop NLP and predictive models with Python, scikit-learn, and PyTorch.\n"
+        "Engineer features, build data pipelines, and run rigorous evaluation.\n"
+        "Deploy models and embeddings as services; monitor drift and performance.\n"
+        "Work with LLMs, retrieval, vector search, and RAG systems.\n"
+        "Requirements: strong Python; scikit-learn, PyTorch or TensorFlow; NLP,\n"
+        "embeddings, transformers; TF-IDF and classical ML; model evaluation metrics;\n"
+        "data pipelines and MLOps; Docker; deploying ML models to the cloud."
+    ),
+    "Product Manager": (
+        "Product Manager\n"
+        "Define product strategy, roadmap, and priorities for a product area.\n"
+        "Conduct user research and translate insight into requirements and specs.\n"
+        "Prioritize a backlog and align engineering, design, and stakeholders.\n"
+        "Define success metrics; run experiments and A/B tests; analyze results.\n"
+        "Communicate roadmap and trade-offs clearly across the organization.\n"
+        "Requirements: product roadmap ownership; user research; writing specs and\n"
+        "PRDs; data-driven prioritization and metrics; stakeholder management;\n"
+        "cross-functional leadership; familiarity with agile delivery."
+    ),
+    "Product Designer": (
+        "Product Designer\n"
+        "Design intuitive, accessible end-to-end product experiences.\n"
+        "Create wireframes, high-fidelity mockups, and interactive prototypes in Figma.\n"
+        "Run user research and usability testing to validate designs.\n"
+        "Own interaction design, visual design, and contributions to the design system.\n"
+        "Partner with engineers to ship polished, accessible interfaces.\n"
+        "Requirements: UX and UI design; Figma; wireframing and prototyping; user\n"
+        "research and usability testing; design systems; interaction and visual design;\n"
+        "accessibility; strong portfolio of shipped product work."
+    ),
 }
 
 # A cosine similarity this high is effectively a perfect match; used only to
@@ -63,9 +126,8 @@ def load_job_embeddings() -> dict:
     """Embed each job description exactly once and reuse across uploads."""
     matcher = load_matcher()
     return {
-        title: matcher.embed_job(path)
-        for title, path in JOB_DESCRIPTIONS.items()
-        if os.path.exists(path)
+        title: matcher.embed_job_text(text)
+        for title, text in JOB_DESCRIPTIONS.items()
     }
 
 
@@ -106,10 +168,22 @@ THEME_CSS = """
     --rs-success: #059669;
     --rs-bg: #F8FAFC;
     --rs-surface: #FFFFFF;
+    --rs-surface-2: #FBFCFE;
     --rs-text: #0F172A;
     --rs-muted: #64748B;
     --rs-border: #E2E8F0;
+    --rs-divider: #F1F5F9;
     --rs-track: #EEF2F7;
+    --rs-hover: #F1F5F9;
+    --rs-hero-grad: linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%);
+    --rs-highlight-bg: linear-gradient(180deg, #EFF6FF, #F8FBFF);
+    --rs-highlight-border: #BFDBFE;
+    --rs-badge-bg: #ECFDF5;
+    --rs-badge-border: #A7F3D0;
+    --rs-badge-text: #059669;
+    --rs-btn-bg: #1E40AF;
+    --rs-btn-hover: #1B3A9E;
+    --rs-on-primary: #FFFFFF;
     --rs-radius: 14px;
     --rs-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.12);
 }
@@ -135,7 +209,7 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 .rs-hero {
     display: flex; align-items: center; gap: 16px;
     padding: 22px 24px; margin-bottom: 8px;
-    background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%);
+    background: var(--rs-hero-grad);
     border: 1px solid var(--rs-border); border-radius: var(--rs-radius);
     box-shadow: var(--rs-shadow);
 }
@@ -147,7 +221,7 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 }
 .rs-hero-mark svg { width: 26px; height: 26px; }
 .rs-hero-title { margin: 0; font-size: 1.55rem; font-weight: 700; line-height: 1.15; }
-.rs-hero-sub { margin: 3px 0 0; color: var(--rs-muted); font-size: .95rem; }
+.rs-hero-sub { margin: 3px 0 0; color: var(--rs-muted) !important; font-size: .95rem; }
 
 /* --- Section labels ------------------------------------------------------- */
 .rs-section {
@@ -162,7 +236,7 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
     background: var(--rs-surface); border: 1px solid var(--rs-border);
     border-radius: var(--rs-radius); padding: 18px 20px; box-shadow: var(--rs-shadow);
 }
-.rs-score-row { padding: 11px 0; border-bottom: 1px solid #F1F5F9; }
+.rs-score-row { padding: 11px 0; border-bottom: 1px solid var(--rs-divider); }
 .rs-score-row:last-child { border-bottom: none; }
 .rs-score-head {
     display: flex; justify-content: space-between; align-items: center;
@@ -186,21 +260,21 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
     font-size: .68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
     padding: 2px 9px; border-radius: 999px; margin-left: 9px; vertical-align: middle;
 }
-.rs-badge-best { color: var(--rs-success); background: #ECFDF5; border: 1px solid #A7F3D0; }
+.rs-badge-best { color: var(--rs-badge-text); background: var(--rs-badge-bg); border: 1px solid var(--rs-badge-border); }
 .rs-badge-best svg { width: 11px; height: 11px; }
 
 /* --- Best-match callout --------------------------------------------------- */
 .rs-highlight {
     display: flex; align-items: center; gap: 12px;
     padding: 14px 18px; margin-bottom: 14px;
-    background: linear-gradient(180deg, #EFF6FF, #F8FBFF);
-    border: 1px solid #BFDBFE; border-radius: 12px;
+    background: var(--rs-highlight-bg);
+    border: 1px solid var(--rs-highlight-border); border-radius: 12px;
 }
 .rs-highlight svg { width: 22px; height: 22px; color: var(--rs-primary); flex: 0 0 auto; }
 .rs-highlight-role { font-weight: 600; color: var(--rs-primary); }
-.rs-highlight-meta { color: var(--rs-muted); font-size: .9rem; }
+.rs-highlight-meta { color: var(--rs-muted) !important; font-size: .9rem; }
 
-.rs-caption { color: var(--rs-muted); font-size: .82rem; margin-top: 12px; line-height: 1.5; }
+.rs-caption { color: var(--rs-muted) !important; font-size: .82rem; margin-top: 12px; line-height: 1.5; }
 
 /* --- Sidebar -------------------------------------------------------------- */
 [data-testid="stSidebar"] { background: var(--rs-surface); border-right: 1px solid var(--rs-border); }
@@ -237,7 +311,7 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
     height: 44px; padding: 0 16px; border-radius: 10px 10px 0 0;
     font-weight: 500; color: var(--rs-muted); transition: color .2s, background .2s;
 }
-.stTabs [data-baseweb="tab"]:hover { color: var(--rs-primary); background: #F1F5F9; }
+.stTabs [data-baseweb="tab"]:hover { color: var(--rs-primary); background: var(--rs-hover); }
 .stTabs [aria-selected="true"] { color: var(--rs-primary) !important; font-weight: 600; }
 .stTabs [data-baseweb="tab-highlight"] { background: var(--rs-primary); height: 3px; }
 
@@ -246,10 +320,10 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
     border-radius: 10px; font-weight: 600; transition: transform .15s, box-shadow .2s, background .2s;
 }
 [data-testid="stBaseButton-primary"] {
-    background: var(--rs-primary); border: 1px solid var(--rs-primary);
+    background: var(--rs-btn-bg); border: 1px solid var(--rs-btn-bg); color: var(--rs-on-primary);
     box-shadow: 0 6px 16px -8px rgba(30,64,175,.6);
 }
-[data-testid="stBaseButton-primary"]:hover { background: #1B3A9E; transform: translateY(-1px); }
+[data-testid="stBaseButton-primary"]:hover { background: var(--rs-btn-hover); transform: translateY(-1px); }
 .stButton > button:active { transform: translateY(0); }
 
 /* --- File uploader -------------------------------------------------------- */
@@ -259,8 +333,31 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 }
 [data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2); background: #FBFDFF; }
 
+/* --- Native Streamlit widgets (kept in sync with the theme, esp. dark) ---- */
+[data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: var(--rs-text); }
+[data-testid="stWidgetLabel"] label, .stSelectbox label, [data-testid="stFileUploader"] label { color: var(--rs-text) !important; }
+code { background: var(--rs-hover); color: var(--rs-text); border-radius: 5px; padding: .08em .35em; }
+/* Select box (closed control + dropdown popover rendered in a portal) */
+.stSelectbox [data-baseweb="select"] > div {
+    background: var(--rs-surface); border-color: var(--rs-border); color: var(--rs-text);
+}
+[data-baseweb="popover"] [role="listbox"] { background: var(--rs-surface); border: 1px solid var(--rs-border); }
+[data-baseweb="popover"] [role="option"] { color: var(--rs-text); }
+[data-baseweb="popover"] [role="option"]:hover { background: var(--rs-hover); }
+/* Text inputs / text area */
+.stTextArea textarea, .stTextInput input {
+    background: var(--rs-surface) !important; color: var(--rs-text) !important; border-color: var(--rs-border) !important;
+}
+/* Expander */
+[data-testid="stExpander"] { border: 1px solid var(--rs-border); border-radius: 12px; background: var(--rs-surface); }
+[data-testid="stExpander"] summary { color: var(--rs-text); }
+/* File uploader helper text */
+[data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span { color: var(--rs-text); }
+[data-testid="stFileUploaderDropzone"] small { color: var(--rs-muted); }
+
 /* --- Alerts (subtle, on-brand) ------------------------------------------- */
-[data-testid="stAlert"] { border-radius: 12px; }
+[data-testid="stAlert"] { border-radius: 12px; background: var(--rs-surface); border: 1px solid var(--rs-border); }
+[data-testid="stAlert"] p, [data-testid="stAlert"] div { color: var(--rs-text); }
 
 /* Focus visibility for keyboard users. */
 :is(button, a, input, [tabindex]):focus-visible {
@@ -269,6 +366,38 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 
 @media (prefers-reduced-motion: reduce) {
     .rs-fill, .stButton > button, [data-testid="stBaseButton-primary"] { transition: none; }
+}
+</style>
+"""
+
+# Dark palette. Injected AFTER THEME_CSS so its :root redefinitions win; every
+# rule above reads var(--rs-*), so flipping these tokens re-themes the whole app.
+DARK_CSS = """
+<style>
+:root {
+    --rs-primary: #60A5FA;
+    --rs-primary-2: #3B82F6;
+    --rs-accent: #F59E0B;
+    --rs-success: #34D399;
+    --rs-bg: #0B1220;
+    --rs-surface: #131C2E;
+    --rs-surface-2: #16213A;
+    --rs-text: #E6EBF4;
+    --rs-muted: #93A2BC;
+    --rs-border: #26324C;
+    --rs-divider: #1E2942;
+    --rs-track: #1C2740;
+    --rs-hover: #1A2338;
+    --rs-hero-grad: linear-gradient(180deg, #16213A 0%, #131C2E 100%);
+    --rs-highlight-bg: linear-gradient(180deg, #12203B, #0F1A30);
+    --rs-highlight-border: #274063;
+    --rs-badge-bg: rgba(52,211,153,.12);
+    --rs-badge-border: rgba(52,211,153,.38);
+    --rs-badge-text: #34D399;
+    --rs-btn-bg: #2563EB;
+    --rs-btn-hover: #1D4ED8;
+    --rs-on-primary: #FFFFFF;
+    --rs-shadow: 0 1px 2px rgba(0,0,0,.35), 0 14px 34px -16px rgba(0,0,0,.65);
 }
 </style>
 """
@@ -323,6 +452,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 st.markdown(THEME_CSS, unsafe_allow_html=True)
+# Dark mode is a per-session toggle (control lives in the sidebar). Read it here,
+# before rendering, so the palette override is injected on the same run.
+if st.session_state.get("rs_dark", False):
+    st.markdown(DARK_CSS, unsafe_allow_html=True)
 
 # Hero header
 st.markdown(
@@ -508,6 +641,8 @@ else:
 # Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    st.toggle("Dark mode", key="rs_dark", help="Switch between the light and dark theme.")
+
     st.markdown(
         f'<div class="rs-side-block"><div class="rs-side-h">{_IC_INFO} How it works</div>'
         f'<div class="rs-feature"><b>Semantic job match</b> — sentence-transformer embeddings rank '
