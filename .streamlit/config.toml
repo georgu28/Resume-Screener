@@ -1,0 +1,11 @@
+# Streamlit configuration.
+#
+# The dev file-watcher walks every imported module on each rerun to watch it for
+# changes. `transformers` lazily exposes hundreds of image_processing_*_fast
+# vision modules that import `torchvision` (which we don't install and don't need
+# — this app only uses text models), so each walk floods the logs with
+# `ModuleNotFoundError: No module named 'torchvision'` tracebacks and slows
+# reruns. A deployed app doesn't need hot-reload, so turn the watcher off.
+[server]
+fileWatcherType = "none"
+headless = true
