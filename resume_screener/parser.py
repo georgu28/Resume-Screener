@@ -13,6 +13,39 @@ logger = logging.getLogger(__name__)
 # Connector words ignored when deciding if a short line is a section header.
 _CONNECTORS = {"and", "of", "the", "a", "an"}
 
+# Below this fraction of spaces, a page's words have almost certainly been run
+# together (e.g. "UniversityofPennsylvania"). Real resume text sits around 12–15%.
+_MIN_SPACE_RATIO = 0.08
+
+
+def _space_ratio(text: str) -> float:
+    """Fraction of characters that are spaces — a proxy for word segmentation."""
+    if not text:
+        return 0.0
+    return text.count(" ") / len(text)
+
+
+def _extract_page_text(page) -> str:
+    """
+    Extract a page's text, recovering word spacing when the default fails.
+
+    Some PDFs (notably LaTeX/Deedy-style resume templates) don't encode explicit
+    space characters — the spacing is purely glyph positioning. pdfplumber's
+    default ``x_tolerance`` of 3 is then too coarse to detect the gaps, so words
+    merge ("AnnArbor,MI"). When we see a page with suspiciously few spaces, we
+    re-extract with a tighter tolerance and keep whichever result is better
+    segmented. Normal PDFs never trip this and keep the default extraction.
+    """
+    text = page.extract_text() or ""
+    if _space_ratio(text) >= _MIN_SPACE_RATIO:
+        return text
+    best = text
+    for x_tolerance in (2, 1):
+        alt = page.extract_text(x_tolerance=x_tolerance) or ""
+        if _space_ratio(alt) > _space_ratio(best):
+            best = alt
+    return best
+
 
 def read_pdf(name: str) -> str:
     """
@@ -20,10 +53,10 @@ def read_pdf(name: str) -> str:
 
     Args:
         name (str): Path to the PDF file
-        
+
     Returns:
         str: Extracted text from the PDF
-        
+
     Raises:
         FileNotFoundError: If the PDF file doesn't exist
         Exception: If PDF cannot be read
@@ -36,7 +69,7 @@ def read_pdf(name: str) -> str:
             # Extract text from all pages, not just the first one
             full_text = ""
             for page in pdf.pages:
-                page_text = page.extract_text()
+                page_text = _extract_page_text(page)
                 if page_text:
                     full_text += page_text + "\n"
             return full_text
