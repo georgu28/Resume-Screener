@@ -97,6 +97,10 @@ class SemanticMatcher:
         """Read a job-description PDF and return its embedding."""
         return self.embed(self._relevant_text(read_pdf(description_path), JOB_SECTIONS))
 
+    def embed_job_text(self, text: str) -> np.ndarray:
+        """Embed a job description supplied as raw text (not a PDF path)."""
+        return self.embed(self._transform_text(text))
+
     @staticmethod
     def cosine(a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two unit-normalized embeddings."""

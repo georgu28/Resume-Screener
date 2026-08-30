@@ -56,7 +56,8 @@ class RagEngine:
     def __init__(self, job_descriptions: Dict[str, str], embedder: Optional[SentenceTransformer] = None):
         """
         Args:
-            job_descriptions: {role_title: pdf_path}
+            job_descriptions: {role_title: source}, where source is either a
+                ``.pdf`` path (read from disk) or the raw job-description text.
             embedder: an existing SentenceTransformer to reuse (avoids loading
                 the model twice); a new one is created if None.
         """
@@ -67,11 +68,17 @@ class RagEngine:
 
     def _build(self, job_descriptions: Dict[str, str]) -> None:
         """Chunk + embed every job description into one FAISS cosine index."""
-        for role, path in job_descriptions.items():
-            if not os.path.exists(path):
-                logger.warning(f"Job description not found, skipping: {path}")
-                continue
-            for passage in _chunk(read_pdf(path)):
+        for role, source in job_descriptions.items():
+            # A source ending in .pdf is a file to read; anything else is the
+            # job-description text itself.
+            if source.endswith(".pdf"):
+                if not os.path.exists(source):
+                    logger.warning(f"Job description not found, skipping: {source}")
+                    continue
+                text = read_pdf(source)
+            else:
+                text = source
+            for passage in _chunk(text):
                 self.chunks.append({"role": role, "text": passage})
 
         if not self.chunks:
