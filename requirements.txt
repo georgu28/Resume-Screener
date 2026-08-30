@@ -1,7 +1,10 @@
 # Core data science libraries
 pandas>=1.5.0
 numpy>=1.21.0
-scikit-learn>=1.1.0
+# Pinned: the committed models/resume_clf.joblib is pickled with this version.
+# A mismatch triggers sklearn's InconsistentVersionWarning and risks a bad load.
+# If you retrain (python train.py) on a newer sklearn, bump this to match.
+scikit-learn==1.9.0
 joblib>=1.2.0
 
 # Natural language processing / embeddings
