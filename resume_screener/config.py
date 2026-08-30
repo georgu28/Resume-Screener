@@ -2,16 +2,6 @@
 Configuration settings for MDST Resume Screener
 """
 
-# Model Configuration
-KNN_CONFIG = {
-    'n_neighbors': 5,
-    'dataset_path': 'UpdatedResumeDataSet.csv',
-    'test_size': 0.2,
-    'random_state': 2024,
-    'max_features': 5000,
-    'stop_words': 'english'
-}
-
 SEMANTIC_CONFIG = {
     'model_name': 'all-MiniLM-L6-v2',
     'resume_sections': ['experience', 'projects', 'skills'],
@@ -21,7 +11,6 @@ SEMANTIC_CONFIG = {
 # File Paths
 PATHS = {
     'pdfs': 'pdfs/',
-    'dataset': 'UpdatedResumeDataSet.csv',
     'job_descriptions': {
         'Full Stack Developer': 'pdfs/full-stack.pdf',
         'Front End Developer': 'pdfs/front-end.pdf',
