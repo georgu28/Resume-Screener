@@ -66,7 +66,7 @@ def test_classifier():
         print(f"✓ Available categories: {categories}")
         
     except Exception as e:
-        print(f"✗ KNN classifier test failed: {e}")
+        print(f"✗ Classifier test failed: {e}")
 
 def test_semantic_matcher():
     """Test the semantic matcher."""

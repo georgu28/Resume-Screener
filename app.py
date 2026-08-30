@@ -44,8 +44,8 @@ _BAR_SCALE = 0.7
 
 
 # ---------------------------------------------------------------------------
-# Cached heavy resources. Without these, every upload retrained the KNN model
-# and reloaded the sentence-transformer from scratch (several seconds each).
+# Cached heavy resources. Without these, every upload reloaded the classifier
+# and the sentence-transformer from scratch (several seconds each).
 # @st.cache_resource keeps a single instance alive across reruns and uploads.
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner="Loading classifier (first run only)...")
@@ -170,7 +170,7 @@ if file:
                 # -----------------------------------------------------------
                 st.header("Resume Category")
                 st.caption(
-                    "A broad classifier trained on 25 general resume categories "
+                    "A broad classifier trained on 43 general resume categories "
                     "(e.g. Data Science, Java Developer, HR). Independent of the roles above."
                 )
 
@@ -193,12 +193,12 @@ if file:
                             st.markdown(f"{prob:.0%}")
 
                     st.caption(
-                        "Confidence is the share of the 5 nearest neighbors in each category, "
-                        "so values land on 0 / 20 / 40 / 60 / 80 / 100%."
+                        "Confidence is the model's calibrated probability for each category "
+                        "(from a LinearSVC wrapped in CalibratedClassifierCV)."
                     )
                 except Exception as e:
                     st.error(f"Error in category prediction: {str(e)}")
-                    logger.error(f"KNN prediction error: {e}")
+                    logger.error(f"Category prediction error: {e}")
 
             with tab_fit:
                 st.header("AI Fit Analysis")
