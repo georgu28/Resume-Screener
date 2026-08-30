@@ -328,36 +328,48 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 
 /* --- File uploader -------------------------------------------------------- */
 [data-testid="stFileUploaderDropzone"] {
-    background: var(--rs-surface); border: 1.5px dashed #CBD5E1; border-radius: var(--rs-radius);
+    background: var(--rs-surface) !important; border: 1.5px dashed var(--rs-border); border-radius: var(--rs-radius);
     transition: border-color .2s, background .2s;
 }
-[data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2); background: #FBFDFF; }
+[data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2) !important; background: var(--rs-surface-2) !important; }
 
-/* --- Native Streamlit widgets (kept in sync with the theme, esp. dark) ---- */
+/* --- Native Streamlit surfaces (kept in sync with the theme, esp. dark) --- */
+/* Main content + header sit on the app background so no light gray shows through. */
+[data-testid="stAppViewContainer"], [data-testid="stMain"],
+[data-testid="stMainBlockContainer"], [data-testid="stBottom"] { background: var(--rs-bg); }
 [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: var(--rs-text); }
 [data-testid="stWidgetLabel"] label, .stSelectbox label, [data-testid="stFileUploader"] label { color: var(--rs-text) !important; }
 code { background: var(--rs-hover); color: var(--rs-text); border-radius: 5px; padding: .08em .35em; }
 /* Select box (closed control + dropdown popover rendered in a portal) */
-.stSelectbox [data-baseweb="select"] > div {
-    background: var(--rs-surface); border-color: var(--rs-border); color: var(--rs-text);
+.stSelectbox [data-baseweb="select"] > div, .stSelectbox [data-baseweb="select"] div[role="button"] {
+    background: var(--rs-surface) !important; border-color: var(--rs-border) !important; color: var(--rs-text) !important;
 }
-[data-baseweb="popover"] [role="listbox"] { background: var(--rs-surface); border: 1px solid var(--rs-border); }
-[data-baseweb="popover"] [role="option"] { color: var(--rs-text); }
-[data-baseweb="popover"] [role="option"]:hover { background: var(--rs-hover); }
+.stSelectbox [data-baseweb="select"] svg { fill: var(--rs-muted); }
+[data-baseweb="popover"] [role="listbox"], [data-baseweb="menu"], [data-baseweb="menu"] ul {
+    background: var(--rs-surface) !important; border: 1px solid var(--rs-border);
+}
+[data-baseweb="popover"] [role="option"], [data-baseweb="menu"] li { color: var(--rs-text) !important; }
+[data-baseweb="popover"] [role="option"]:hover, [data-baseweb="menu"] li:hover { background: var(--rs-hover) !important; }
 /* Text inputs / text area */
 .stTextArea textarea, .stTextInput input {
     background: var(--rs-surface) !important; color: var(--rs-text) !important; border-color: var(--rs-border) !important;
 }
+/* Secondary buttons (e.g. the uploader's "Browse files") */
+[data-testid="stBaseButton-secondary"] {
+    background: var(--rs-surface) !important; color: var(--rs-text) !important; border: 1px solid var(--rs-border) !important;
+}
+[data-testid="stBaseButton-secondary"]:hover { border-color: var(--rs-primary-2) !important; color: var(--rs-primary) !important; }
 /* Expander */
-[data-testid="stExpander"] { border: 1px solid var(--rs-border); border-radius: 12px; background: var(--rs-surface); }
-[data-testid="stExpander"] summary { color: var(--rs-text); }
-/* File uploader helper text */
-[data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span { color: var(--rs-text); }
-[data-testid="stFileUploaderDropzone"] small { color: var(--rs-muted); }
+[data-testid="stExpander"] { border: 1px solid var(--rs-border) !important; border-radius: 12px; background: var(--rs-surface) !important; }
+[data-testid="stExpander"] summary, [data-testid="stExpander"] summary * { color: var(--rs-text) !important; }
+/* File uploader helper text (only after its surface is forced dark above) */
+[data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] div { color: var(--rs-text) !important; }
+[data-testid="stFileUploaderDropzone"] small { color: var(--rs-muted) !important; }
 
 /* --- Alerts (subtle, on-brand) ------------------------------------------- */
-[data-testid="stAlert"] { border-radius: 12px; background: var(--rs-surface); border: 1px solid var(--rs-border); }
-[data-testid="stAlert"] p, [data-testid="stAlert"] div { color: var(--rs-text); }
+[data-testid="stAlert"] { border-radius: 12px; background: var(--rs-surface) !important; border: 1px solid var(--rs-border); }
+[data-testid="stAlert"] p, [data-testid="stAlert"] div, [data-testid="stAlert"] span { color: var(--rs-text) !important; }
+[data-testid="stAlert"] code { background: var(--rs-hover); }
 
 /* Focus visibility for keyboard users. */
 :is(button, a, input, [tabindex]):focus-visible {
@@ -398,6 +410,14 @@ DARK_CSS = """
     --rs-btn-hover: #1D4ED8;
     --rs-on-primary: #FFFFFF;
     --rs-shadow: 0 1px 2px rgba(0,0,0,.35), 0 14px 34px -16px rgba(0,0,0,.65);
+}
+/* Best-effort override of Streamlit's own theme tokens so any native widget we
+   didn't target explicitly still picks up dark surfaces/text. */
+:root, .stApp, [data-testid="stAppViewContainer"] {
+    --background-color: #0B1220 !important;
+    --secondary-background-color: #131C2E !important;
+    --text-color: #E6EBF4 !important;
+    --primary-color: #60A5FA !important;
 }
 </style>
 """
