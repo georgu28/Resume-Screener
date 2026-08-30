@@ -6,7 +6,10 @@ redeploys automatically on every push to `main`.
 - **Repo:** https://github.com/georgu28/Resume-Screener
 - **Branch:** `main`
 - **Entry point:** `app.py`
-- **Python:** 3.11 (matches `.devcontainer` and the deploy target)
+- **Python:** 3.11–3.14 all work. Pick the newest the Streamlit Cloud dropdown
+  offers (3.14 if listed). Every dependency — torch, faiss-cpu, scikit-learn,
+  numpy, scipy — ships prebuilt wheels through 3.14, so nothing compiles from
+  source. 3.11 is only the conservative floor (it's what `.devcontainer` uses).
 
 ## 0. Push first
 
@@ -31,7 +34,8 @@ model (~90 MB) downloads from Hugging Face on first launch — that's expected.
    - **Repository:** `georgu28/Resume-Screener`
    - **Branch:** `main`
    - **Main file path:** `app.py`
-4. Open **Advanced settings** and set **Python version** to **3.11**.
+4. Open **Advanced settings** and set the **Python version** to the newest
+   offered (3.14 if available; any of 3.11–3.14 works).
 
 Don't click Deploy yet — add the secret first (step 2), so the AI Fit Analysis
 tab works on the first boot.
