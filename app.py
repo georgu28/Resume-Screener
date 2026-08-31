@@ -250,11 +250,31 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 .stButton > button:active { transform: translateY(0); }
 
 /* --- File uploader -------------------------------------------------------- */
+/* Streamlit's default dropzone is a row that shoves "Browse files" to the far
+   right. Make it a centered column so the instructions and the button stack and
+   center together. */
 [data-testid="stFileUploaderDropzone"] {
     background: var(--rs-surface) !important; border: 1.5px dashed var(--rs-border); border-radius: var(--rs-radius);
-    min-height: 132px; padding: 14px 20px; transition: border-color .2s, background .2s;
+    min-height: 168px; padding: 30px 24px; transition: border-color .2s, background .2s, box-shadow .2s;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center;
 }
-[data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2) !important; background: var(--rs-surface-2) !important; }
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: var(--rs-primary-2) !important; background: var(--rs-surface-2) !important;
+    box-shadow: var(--rs-shadow);
+}
+/* Center the icon + copy block as its own centered column. */
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 0; width: 100%;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] > div { align-items: center; text-align: center; }
+/* Tint the upload cloud icon on-brand and give it presence. */
+[data-testid="stFileUploaderDropzone"] svg {
+    fill: var(--rs-primary) !important; color: var(--rs-primary) !important;
+    width: 40px; height: 40px;
+}
+/* Center the "Browse files" button beneath the instructions. */
+[data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] { margin: 0 auto; min-width: 148px; }
 /* Tooltip popover (e.g. the Dark mode help) kept a hardcoded white bg. */
 [data-testid="stTooltipContent"] {
     background: var(--rs-surface) !important; border: 1px solid var(--rs-border) !important;
@@ -415,8 +435,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 st.markdown(THEME_CSS, unsafe_allow_html=True)
-# Dark mode is a per-session toggle (control lives in the sidebar). Read it here,
-# before rendering, so the palette override is injected on the same run.
+# Dark mode is a per-session toggle (control lives in the sidebar). Default it on
+# the first run so the app opens in dark mode; the sidebar toggle binds to the
+# same key, so it starts switched on. Read it here, before rendering, so the
+# palette override is injected on the same run.
+st.session_state.setdefault("rs_dark", True)
 if st.session_state.get("rs_dark", False):
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
@@ -549,7 +572,10 @@ if file:
                         st.markdown(score_card(result["score"]), unsafe_allow_html=True)
                     if result["feedback"]:
                         st.markdown(result["feedback"])
-                    if result["score"] is None and result["matched"]:
+                    # Only fall back to the retrieval-only view when Claude never
+                    # ran (missing/rejected key), not on a real screen that happened
+                    # to parse no score.
+                    if result.get("needs_key") and result["matched"]:
                         st.markdown(
                             '<div class="rs-caption" style="margin-top:14px">Requirements your '
                             'resume already matches:</div>',

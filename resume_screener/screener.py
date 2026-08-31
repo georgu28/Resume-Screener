@@ -17,6 +17,7 @@ The Claude step needs ANTHROPIC_API_KEY; retrieval and fetching work without it.
 
 import logging
 import re
+import time
 from typing import Dict, List, Optional
 
 import requests
@@ -84,6 +85,63 @@ def fetch_job_posting(url: str, timeout: int = 15) -> str:
     return text
 
 
+# Transient Anthropic failures (rate limits, overloaded 529s, brief network
+# blips) are retried a few times before giving up, so one flaky call doesn't
+# silently drop the user back into the retrieval-only view.
+_MAX_ATTEMPTS = 4
+_RETRY_BACKOFF = 1.5  # seconds, multiplied by the attempt number
+_MAX_OUTPUT_TOKENS = 8000  # ceiling when growing the budget after a truncation
+
+
+def _generate(system: str, user: str, max_tokens: int) -> str:
+    """
+    Call Claude and return the response text, retrying transient failures.
+
+    - Rate limits, overloaded/5xx, timeouts, and connection errors are retried
+      with a short linear backoff.
+    - If a response is cut off at ``max_tokens`` (``stop_reason == "max_tokens"``),
+      the budget is doubled and the call is retried so every section comes through
+      instead of stopping mid-sentence.
+    - ``AuthenticationError`` is NOT retried; it propagates so the caller can tell
+      the user their key was rejected.
+
+    Raises the last transient error if every attempt fails.
+    """
+    import anthropic
+
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+    budget = max_tokens
+    text = ""
+    last_err: Optional[Exception] = None
+
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            resp = client.messages.create(
+                model=MODEL,
+                max_tokens=budget,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            text = "".join(b.text for b in resp.content if b.type == "text").strip()
+            if resp.stop_reason == "max_tokens" and budget < _MAX_OUTPUT_TOKENS:
+                # Truncated mid-answer (later sections never rendered). Grow the
+                # budget and regenerate rather than returning a partial screen.
+                budget = min(budget * 2, _MAX_OUTPUT_TOKENS)
+                logger.warning(f"Response truncated at max_tokens; retrying with budget={budget}")
+                continue
+            return text
+        except anthropic.AuthenticationError:
+            raise  # not retryable - the key itself is bad
+        except (anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+            last_err = e
+            logger.warning(f"Anthropic call failed (attempt {attempt + 1}/{_MAX_ATTEMPTS}): {e}")
+            time.sleep(_RETRY_BACKOFF * (attempt + 1))
+
+    if last_err is not None:
+        raise last_err
+    return text  # exhausted retries on truncation - return the best partial answer
+
+
 _SYSTEM = (
     "You are an experienced technical recruiter and the ATS that screens resumes "
     "before a human sees them. Judge how well a candidate's resume matches a "
@@ -127,8 +185,9 @@ def _build_prompt(resume_text: str, job_text: str, matched: List[str]) -> str:
         "First line, nothing else on it: `SCORE: <0-100>` — how a recruiter/ATS "
         "would rate this resume's match to THIS posting.\n"
         "**Verdict** - one sentence: is this likely to pass the initial screen, and why.\n"
-        "**Matched** - 3-6 bullets, each a posting requirement met, with the resume "
-        "evidence that proves it.\n"
+        "**Matched** - 3-6 bullets, each naming the posting requirement briefly (a short "
+        "label, not a long verbatim quote) plus the resume evidence that proves it. Keep "
+        "each bullet to one line so every section below still gets written.\n"
         "**Missing** - 3-6 bullets of required or important keywords, skills, or "
         "qualifications from the posting that the resume does not show. These are the "
         "gaps that sink an ATS match.\n"
@@ -145,8 +204,13 @@ def screen(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     """
     Score a resume against a job posting and explain the fit.
 
-    Returns a dict: {"score": Optional[int], "feedback": markdown_str,
-    "matched": [retrieved requirement passages]}.
+    Returns a dict: {"score": Optional[int], "needs_key": bool,
+    "feedback": markdown_str, "matched": [retrieved requirement passages]}.
+
+    ``needs_key`` is True only when Claude never produced a real screen (the key
+    is missing or was rejected) — that's the only case the UI should fall back to
+    showing the retrieved requirements. A transient failure is retried inside
+    :func:`_generate` first, so a flaky call no longer lands the user there.
 
     The retrieval step (RAG) surfaces the requirements the resume is closest to;
     Claude then scores against the FULL posting so it can also find the gaps that
@@ -160,6 +224,7 @@ def screen(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         return {
             "score": None,
+            "needs_key": True,
             "feedback": (
                 "Set ANTHROPIC_API_KEY to get the scored screen and tailored feedback. "
                 "Until then, here are the posting requirements your resume is closest to."
@@ -170,26 +235,17 @@ def screen(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     import anthropic
 
     try:
-        client = anthropic.Anthropic()
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=1400,
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": _build_prompt(resume_text, job_text, matched)}],
-        )
-        raw = "".join(b.text for b in resp.content if b.type == "text")
+        raw = _generate(_SYSTEM, _build_prompt(resume_text, job_text, matched), max_tokens=2600)
     except anthropic.AuthenticationError:
-        return {"score": None, "matched": matched,
+        return {"score": None, "needs_key": True, "matched": matched,
                 "feedback": "That ANTHROPIC_API_KEY was rejected. Check the key and try again."}
-    except anthropic.RateLimitError:
-        return {"score": None, "matched": matched,
-                "feedback": "Rate limited by the Anthropic API - give it a moment and retry."}
     except anthropic.AnthropicError as e:
-        logger.error(f"Anthropic error: {e}")
-        return {"score": None, "matched": matched, "feedback": f"The screen failed: {e}"}
+        logger.error(f"Anthropic error after retries: {e}")
+        return {"score": None, "needs_key": True, "matched": matched,
+                "feedback": f"The screen failed after several retries: {e}"}
 
     score, feedback = _split_score(raw)
-    return {"score": score, "feedback": feedback, "matched": matched}
+    return {"score": score, "needs_key": False, "feedback": feedback, "matched": matched}
 
 
 _TAILOR_SYSTEM = (
@@ -241,21 +297,12 @@ def tailor(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     import anthropic
 
     try:
-        client = anthropic.Anthropic()
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=1600,
-            system=_TAILOR_SYSTEM,
-            messages=[{"role": "user", "content": _tailor_prompt(resume_text, job_text, matched)}],
-        )
-        return "".join(b.text for b in resp.content if b.type == "text").strip()
+        return _generate(_TAILOR_SYSTEM, _tailor_prompt(resume_text, job_text, matched), max_tokens=2400)
     except anthropic.AuthenticationError:
         return "That ANTHROPIC_API_KEY was rejected. Check the key and try again."
-    except anthropic.RateLimitError:
-        return "Rate limited by the Anthropic API - give it a moment and retry."
     except anthropic.AnthropicError as e:
-        logger.error(f"Anthropic error: {e}")
-        return f"The tailoring failed: {e}"
+        logger.error(f"Anthropic error after retries: {e}")
+        return f"The tailoring failed after several retries: {e}"
 
 
 def _has_key() -> bool:
