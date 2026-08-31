@@ -18,6 +18,11 @@ python-dotenv>=0.19.0
 # PDF processing
 pdfplumber>=0.7.0
 
+# Job-posting fetching (screener)
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
+
 # Web interface
 streamlit>=1.25.0
 streamlit-pdf-viewer>=0.0.1
