@@ -528,10 +528,11 @@ if file:
                             return None, str(e)
                     return None, "Add a job link or paste the description first."
 
-                # Screen and Tailor sit side by side. Columns are containers, so the
-                # Tailor button (written further down) still lands in the right column
-                # even though its render is deferred until a screening exists.
-                col_screen, col_tailor = st.columns(2)
+                # Screen and Tailor sit next to each other. Narrow columns keep the
+                # two buttons adjacent rather than stretched across the page. The
+                # Tailor button is rendered after the screen logic so a just-finished
+                # screen enables it on the same run.
+                col_screen, col_tailor, _btn_spacer = st.columns([1, 1, 2])
                 if col_screen.button("Screen my resume", type="primary"):
                     job_text, err = resolve_posting()
                     if err:
@@ -548,10 +549,16 @@ if file:
                             st.error(f"The screen failed: {str(e)}")
                             logger.error(f"Screener error: {e}")
 
-                # Tailoring to a posting the resume hasn't been screened against makes no
-                # sense, so this button only appears once a screening has finished. It
-                # reuses the exact posting that was screened.
-                if st.session_state.get("rs_screen") and col_tailor.button("Tailor my resume"):
+                # Tailoring only makes sense once a screening exists, so the button
+                # stays disabled until then (rather than popping in and out and
+                # shifting the layout). It reuses the exact posting that was screened.
+                _has_screen = bool(st.session_state.get("rs_screen"))
+                _tailor_clicked = col_tailor.button(
+                    "Tailor my resume",
+                    disabled=not _has_screen,
+                    help="Screen your resume against a posting first, then tailor it to that posting.",
+                )
+                if _tailor_clicked and _has_screen:
                     job_text = st.session_state.get("rs_job_text")
                     if not job_text:
                         st.warning("Screen your resume against a posting first.")
