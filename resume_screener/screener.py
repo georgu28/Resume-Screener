@@ -183,6 +183,77 @@ def screen(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     return {"score": score, "feedback": feedback, "matched": matched}
 
 
+_TAILOR_SYSTEM = (
+    "You are a resume writer helping a candidate tailor their existing resume to a "
+    "specific job posting. Rewrite ONLY what the resume already contains: reorder, "
+    "reword, and emphasize the candidate's real experience, projects, and skills so "
+    "they mirror the posting's language and lead with the most relevant "
+    "qualifications. Never invent or exaggerate experience, employers, job titles, "
+    "dates, metrics, degrees, or skills. Keep every number the resume gives and do "
+    "not add new ones. If the posting wants something the resume does not clearly "
+    "support, do not put it in the rewrite; list it separately as something for the "
+    "candidate to add only if it is true. Use plain punctuation and no em dashes."
+)
+
+
+def _tailor_prompt(resume_text: str, job_text: str, matched: List[str]) -> str:
+    evidence = "\n".join(f"- {m}" for m in matched) or "(none retrieved)"
+    return (
+        f"JOB POSTING:\n{job_text[:6000]}\n\n"
+        f"REQUIREMENTS THIS RESUME IS CLOSEST TO (retrieved):\n{evidence}\n\n"
+        f"CURRENT RESUME:\n{resume_text[:5500]}\n\n"
+        "Produce, in GitHub-flavored markdown with these parts:\n"
+        "**Summary** - a 2 to 3 line summary targeting this role, drawn only from the "
+        "resume.\n"
+        "**Tailored bullets** - rewrite the most relevant experience and project bullets "
+        "to mirror the posting's language and lead with impact. Keep every fact truthful "
+        "and keep any numbers the resume already gives.\n"
+        "**Skills line** - one skills line that emphasizes the posting's keywords the "
+        "resume genuinely supports.\n"
+        "**Add only if true** - keywords, skills, or details the posting wants that the "
+        "resume does not clearly show. The candidate should add these only if accurate. "
+        "Never fabricate."
+    )
+
+
+def tailor(resume_text: str, job_text: str, embedder: SentenceTransformer, k: int = 8) -> str:
+    """
+    Rewrite the resume to fit a posting, using only what the resume already shows.
+
+    Returns markdown: a targeted summary, reworked bullets, a skills line, and a
+    separate list of things to add only if they are true. Needs ANTHROPIC_API_KEY.
+    """
+    if not _has_key():
+        return "Set ANTHROPIC_API_KEY to generate a tailored rewrite of your resume."
+
+    engine = RagEngine({"posting": job_text}, embedder=embedder)
+    matched = [hit["text"] for hit in engine.retrieve(resume_text, k=k, role="posting")]
+
+    import anthropic
+
+    try:
+        client = anthropic.Anthropic()
+        resp = client.messages.create(
+            model=MODEL,
+            max_tokens=1600,
+            system=_TAILOR_SYSTEM,
+            messages=[{"role": "user", "content": _tailor_prompt(resume_text, job_text, matched)}],
+        )
+        return "".join(b.text for b in resp.content if b.type == "text").strip()
+    except anthropic.AuthenticationError:
+        return "That ANTHROPIC_API_KEY was rejected. Check the key and try again."
+    except anthropic.RateLimitError:
+        return "Rate limited by the Anthropic API - give it a moment and retry."
+    except anthropic.AnthropicError as e:
+        logger.error(f"Anthropic error: {e}")
+        return f"The tailoring failed: {e}"
+
+
+def _has_key() -> bool:
+    import os
+    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+
 def _split_score(raw: str) -> (Optional[int], str):
     """Pull a leading ``SCORE: NN`` off the response; return (score, rest)."""
     m = re.search(r"SCORE:\s*(\d{1,3})", raw)
