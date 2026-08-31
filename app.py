@@ -6,7 +6,7 @@ import json
 from resume_screener.parser import read_pdf
 from resume_screener.semantic import SemanticMatcher
 from resume_screener.classifier import ResumeClassifier
-from resume_screener.rag import RagEngine
+from resume_screener import screener
 import logging
 
 try:
@@ -30,82 +30,6 @@ def load_metrics() -> dict:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Open roles to score every uploaded resume against. Each value is the job
-# description text itself (chunked for RAG retrieval and embedded whole for the
-# semantic match) — edit these freely to change the roles, no PDF needed.
-JOB_DESCRIPTIONS = {
-    "Backend Engineer": (
-        "Backend Engineer\n"
-        "Design, build, and operate scalable server-side services and APIs.\n"
-        "Build and maintain REST and gRPC APIs and microservices.\n"
-        "Design relational and NoSQL data models; optimize queries and indexes.\n"
-        "Write clean, well-tested Python (or Go/Java) backend services.\n"
-        "Own reliability, latency, observability, and on-call for production systems.\n"
-        "Requirements: strong Python and SQL; PostgreSQL, Redis; REST API design;\n"
-        "Docker containers; CI/CD pipelines; AWS or GCP; unit and integration testing;\n"
-        "distributed systems, caching, message queues, and event-driven architecture."
-    ),
-    "Frontend Engineer": (
-        "Frontend Engineer\n"
-        "Build responsive, accessible web interfaces and design systems.\n"
-        "Develop UI in React with TypeScript, HTML, and modern CSS.\n"
-        "Implement state management, data fetching, and component libraries.\n"
-        "Ensure accessibility (WCAG), cross-browser support, and performance.\n"
-        "Collaborate with designers to ship pixel-accurate, interactive experiences.\n"
-        "Requirements: JavaScript/TypeScript, React, HTML, CSS; responsive design;\n"
-        "web accessibility; frontend testing (Jest, Playwright); build tooling (Vite,\n"
-        "webpack); REST/GraphQL API integration; Core Web Vitals and performance."
-    ),
-    "Full Stack Engineer": (
-        "Full Stack Engineer\n"
-        "Own features end to end, from database to user interface.\n"
-        "Build backend APIs in Python or Node and frontends in React/TypeScript.\n"
-        "Model data, write services, and design the UI that consumes them.\n"
-        "Ship, deploy, and monitor features across the whole stack.\n"
-        "Requirements: Python or Node.js plus React and TypeScript; SQL databases;\n"
-        "REST API design; Docker and CI/CD; cloud deployment (AWS/GCP); testing across\n"
-        "frontend and backend; comfort moving fluidly between client and server."
-    ),
-    "Machine Learning Engineer": (
-        "Machine Learning Engineer\n"
-        "Build, train, evaluate, and deploy machine learning models in production.\n"
-        "Develop NLP and predictive models with Python, scikit-learn, and PyTorch.\n"
-        "Engineer features, build data pipelines, and run rigorous evaluation.\n"
-        "Deploy models and embeddings as services; monitor drift and performance.\n"
-        "Work with LLMs, retrieval, vector search, and RAG systems.\n"
-        "Requirements: strong Python; scikit-learn, PyTorch or TensorFlow; NLP,\n"
-        "embeddings, transformers; TF-IDF and classical ML; model evaluation metrics;\n"
-        "data pipelines and MLOps; Docker; deploying ML models to the cloud."
-    ),
-    "Product Manager": (
-        "Product Manager\n"
-        "Define product strategy, roadmap, and priorities for a product area.\n"
-        "Conduct user research and translate insight into requirements and specs.\n"
-        "Prioritize a backlog and align engineering, design, and stakeholders.\n"
-        "Define success metrics; run experiments and A/B tests; analyze results.\n"
-        "Communicate roadmap and trade-offs clearly across the organization.\n"
-        "Requirements: product roadmap ownership; user research; writing specs and\n"
-        "PRDs; data-driven prioritization and metrics; stakeholder management;\n"
-        "cross-functional leadership; familiarity with agile delivery."
-    ),
-    "Product Designer": (
-        "Product Designer\n"
-        "Design intuitive, accessible end-to-end product experiences.\n"
-        "Create wireframes, high-fidelity mockups, and interactive prototypes in Figma.\n"
-        "Run user research and usability testing to validate designs.\n"
-        "Own interaction design, visual design, and contributions to the design system.\n"
-        "Partner with engineers to ship polished, accessible interfaces.\n"
-        "Requirements: UX and UI design; Figma; wireframing and prototyping; user\n"
-        "research and usability testing; design systems; interaction and visual design;\n"
-        "accessibility; strong portfolio of shipped product work."
-    ),
-}
-
-# A cosine similarity this high is effectively a perfect match; used only to
-# scale the progress bars so small real-world differences stay visible.
-_BAR_SCALE = 0.7
-
-
 # ---------------------------------------------------------------------------
 # Cached heavy resources. Without these, every upload reloaded the classifier
 # and the sentence-transformer from scratch (several seconds each).
@@ -116,25 +40,10 @@ def load_classifier() -> ResumeClassifier:
     return ResumeClassifier()
 
 
-@st.cache_resource(show_spinner="Loading semantic model (first run only)...")
+@st.cache_resource(show_spinner="Loading language model (first run only)...")
 def load_matcher() -> SemanticMatcher:
+    # The SentenceTransformer inside is reused as the screener's RAG embedder.
     return SemanticMatcher()
-
-
-@st.cache_resource(show_spinner="Embedding job descriptions (first run only)...")
-def load_job_embeddings() -> dict:
-    """Embed each job description exactly once and reuse across uploads."""
-    matcher = load_matcher()
-    return {
-        title: matcher.embed_job_text(text)
-        for title, text in JOB_DESCRIPTIONS.items()
-    }
-
-
-@st.cache_resource(show_spinner="Building retrieval index (first run only)...")
-def load_rag() -> RagEngine:
-    """Build the RAG index once, reusing the semantic matcher's embedder."""
-    return RagEngine(JOB_DESCRIPTIONS, embedder=load_matcher().model)
 
 
 def anthropic_key() -> str:
@@ -276,6 +185,20 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 
 .rs-caption { color: var(--rs-muted) !important; font-size: .82rem; margin-top: 12px; line-height: 1.5; }
 
+/* --- Screener score card -------------------------------------------------- */
+.rs-scorecard {
+    display: flex; align-items: center; gap: 20px; padding: 18px 22px; margin-bottom: 16px;
+    background: var(--rs-surface); border: 1px solid var(--rs-border);
+    border-radius: var(--rs-radius); box-shadow: var(--rs-shadow);
+}
+.rs-score-big {
+    font-family: 'Fira Code', ui-monospace, monospace; font-size: 2.6rem; font-weight: 700;
+    line-height: 1; font-variant-numeric: tabular-nums; flex: 0 0 auto;
+}
+.rs-score-of { font-size: 1rem; color: var(--rs-muted); font-weight: 500; margin-left: 2px; }
+.rs-score-body { flex: 1; min-width: 0; }
+.rs-score-tag { font-weight: 600; font-size: .95rem; margin-bottom: 9px; }
+
 /* --- Sidebar -------------------------------------------------------------- */
 [data-testid="stSidebar"] { background: var(--rs-surface); border-right: 1px solid var(--rs-border); }
 [data-testid="stSidebar"] .block-container { padding-top: 1.6rem; }
@@ -332,6 +255,15 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
     transition: border-color .2s, background .2s;
 }
 [data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2) !important; background: var(--rs-surface-2) !important; }
+/* The chip shown after a file is uploaded (kept a light-gray bg by default). */
+[data-testid="stFileChip"] {
+    background: var(--rs-surface) !important; border: 1px solid var(--rs-border) !important;
+    border-radius: 10px !important;
+}
+[data-testid="stFileChip"], [data-testid="stFileChip"] span, [data-testid="stFileChip"] small {
+    color: var(--rs-text) !important;
+}
+[data-testid="stFileChip"] svg { fill: var(--rs-muted) !important; }
 
 /* --- Native Streamlit surfaces (kept in sync with the theme, esp. dark) --- */
 /* Main content + header sit on the app background so no light gray shows through. */
@@ -434,17 +366,22 @@ _IC_CHART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 _IC_DOT = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3.5"/></svg>'
 
 
-def score_row(label: str, score: float, is_best: bool = False) -> str:
-    """A job-match row: label + tabular score + a scaled progress track."""
-    pct = min(score / _BAR_SCALE, 1.0) * 100
-    badge = f'<span class="rs-badge rs-badge-best">{_IC_CHECK} Best</span>' if is_best else ""
-    cls = " rs-best" if is_best else ""
+def score_card(score: int) -> str:
+    """A big match-score readout for the screener: number, verdict, colored bar."""
+    if score >= 70:
+        tone, label = "var(--rs-success)", "Strong match"
+    elif score >= 45:
+        tone, label = "var(--rs-accent)", "Moderate match"
+    else:
+        tone, label = "#EF4444", "Weak match"
     return (
-        f'<div class="rs-score-row{cls}">'
-        f'<div class="rs-score-head"><span class="rs-score-label">{label}{badge}</span>'
-        f'<span class="rs-score-val">{score:.3f}</span></div>'
-        f'<div class="rs-track"><div class="rs-fill" style="width:{pct:.1f}%"></div></div>'
-        f'</div>'
+        f'<div class="rs-scorecard">'
+        f'<div class="rs-score-big" style="color:{tone}">{score}'
+        f'<span class="rs-score-of">/100</span></div>'
+        f'<div class="rs-score-body">'
+        f'<div class="rs-score-tag" style="color:{tone}">{label}</div>'
+        f'<div class="rs-track"><div class="rs-fill" style="width:{score}%;background:{tone}"></div></div>'
+        f'</div></div>'
     )
 
 
@@ -477,6 +414,10 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 if st.session_state.get("rs_dark", False):
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
+# Bridge a Streamlit Cloud secret into the environment so the anthropic SDK (used
+# by the screener) picks it up; harmless locally where the key is already in env.
+anthropic_key()
+
 # Hero header
 st.markdown(
     f'''
@@ -484,7 +425,7 @@ st.markdown(
       <div class="rs-hero-mark">{_IC_SCAN}</div>
       <div>
         <h1 class="rs-hero-title">Resume Screener</h1>
-        <p class="rs-hero-sub">Semantic role matching, résumé classification, and grounded AI fit analysis.</p>
+        <p class="rs-hero-sub">Sort a resume into a category, then screen it against a real job posting.</p>
       </div>
     </div>
     ''',
@@ -492,10 +433,10 @@ st.markdown(
 )
 
 # File uploader
-section(_IC_SCAN, "Upload a résumé")
+section(_IC_SCAN, "Upload your resume")
 file = st.file_uploader(
     "Choose a PDF file", type="pdf",
-    help="Upload a PDF résumé to score it against the open roles.",
+    help="Upload a PDF resume to classify it and screen it against a job posting.",
     label_visibility="collapsed",
 )
 
@@ -513,62 +454,69 @@ if file:
         text = read_pdf(tmp_file_path)
 
         if text.strip():
-            tab1, tab_fit, tab2, tab3 = st.tabs(
-                ["Analysis", "Fit Analysis (AI)", "Preview", "Extracted Text"]
+            tab_screen, tab_cat, tab_prev, tab_text = st.tabs(
+                ["Screener", "Category", "Preview", "Extracted Text"]
             )
 
-            with tab1:
+            with tab_screen:
                 # -----------------------------------------------------------
-                # Primary result: semantic match against the open roles.
+                # Score the resume against a specific posting the user provides,
+                # then have Claude say what's missing and how to fix it.
                 # -----------------------------------------------------------
-                section(_IC_TARGET, "Job match")
+                section(_IC_TARGET, "Screen against a job posting")
+                st.markdown(
+                    '<p class="rs-caption" style="margin-top:0">Paste a job link or the description '
+                    'text. You get a match score and specific fixes, scored the way a recruiter or an '
+                    'ATS reads a resume.</p>',
+                    unsafe_allow_html=True,
+                )
+                posting_url = st.text_input(
+                    "Job posting URL", placeholder="https://company.com/careers/backend-engineer",
+                )
+                st.caption(
+                    "Big boards like LinkedIn, Indeed, and Workday block scraping. If a link does not "
+                    "load, paste the description below instead."
+                )
+                pasted_jd = st.text_area("Or paste the job description", height=150)
 
-                try:
-                    with st.spinner("Scoring against job descriptions..."):
-                        matcher = load_matcher()
-                        jd_embeddings = load_job_embeddings()
-                        resume_emb = matcher.embed_resume(tmp_file_path)
-                        similarities = {
-                            title: round(matcher.cosine(resume_emb, emb), 3)
-                            for title, emb in jd_embeddings.items()
-                        }
+                if st.button("Screen my resume", type="primary"):
+                    job_text = pasted_jd.strip()
+                    if not job_text and posting_url.strip():
+                        try:
+                            with st.spinner("Reading the posting..."):
+                                job_text = screener.fetch_job_posting(posting_url)
+                        except screener.PostingFetchError as e:
+                            st.warning(str(e))
 
-                    if similarities:
-                        ranked = dict(sorted(similarities.items(), key=lambda x: x[1], reverse=True))
-                        best_match, best_score = next(iter(ranked.items()))
-
-                        st.markdown(
-                            f'<div class="rs-highlight">{_IC_TARGET}'
-                            f'<div><span class="rs-highlight-role">{best_match}</span>'
-                            f'<span class="rs-highlight-meta"> &nbsp;·&nbsp; best match at '
-                            f'{best_score:.3f} similarity</span></div></div>',
-                            unsafe_allow_html=True,
-                        )
-
-                        rows = "".join(
-                            score_row(t, s, is_best=(t == best_match))
-                            for t, s in ranked.items()
-                        )
-                        st.markdown(
-                            f'<div class="rs-card">{rows}'
-                            f'<div class="rs-caption">Scores are cosine similarity (0–1) — compare them '
-                            f'against each other rather than as absolute percentages. Higher means a '
-                            f'closer match.</div></div>',
-                            unsafe_allow_html=True,
-                        )
+                    if not job_text:
+                        st.info("Add a job link or paste the description, then run the screen.")
                     else:
-                        st.warning("No job descriptions available to compare against.")
-                except Exception as e:
-                    st.error(f"Error in semantic analysis: {str(e)}")
-                    logger.error(f"Semantic analysis error: {e}")
+                        try:
+                            with st.spinner("Scoring your resume against the posting..."):
+                                result = screener.screen(text, job_text, load_matcher().model)
 
-                st.write("")
+                            if result["score"] is not None:
+                                st.markdown(score_card(result["score"]), unsafe_allow_html=True)
+                            if result["feedback"]:
+                                st.markdown(result["feedback"])
+                            if result["score"] is None and result["matched"]:
+                                st.markdown(
+                                    '<div class="rs-caption" style="margin-top:14px">Requirements your '
+                                    'resume already matches:</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                hits = "".join(
+                                    f'<div class="rs-side-item">{_IC_DOT}<span>{m}</span></div>'
+                                    for m in result["matched"]
+                                )
+                                st.markdown(f'<div class="rs-card">{hits}</div>', unsafe_allow_html=True)
+                        except Exception as e:
+                            st.error(f"The screen failed: {str(e)}")
+                            logger.error(f"Screener error: {e}")
 
-                # -----------------------------------------------------------
-                # Secondary result: broad resume-category classifier. This is
-                # independent of the roles above (43 general categories).
-                # -----------------------------------------------------------
-                section(_IC_TAG, "Résumé category")
+            with tab_cat:
+                # Broad resume-category classifier (43 categories).
+                section(_IC_TAG, "Resume category")
 
                 try:
                     with st.spinner("Classifying resume..."):
@@ -581,55 +529,23 @@ if file:
                     st.markdown(
                         f'<div class="rs-highlight">{_IC_TAG}'
                         f'<div><span class="rs-highlight-role">{predicted_category}</span>'
-                        f'<span class="rs-highlight-meta"> &nbsp;·&nbsp; predicted category</span></div></div>'
+                        f'<span class="rs-highlight-meta">&nbsp;&nbsp;top category</span></div></div>'
                         f'<div class="rs-card">{rows}'
-                        f'<div class="rs-caption">A broad classifier over 43 general résumé categories '
-                        f'(e.g. Data Science, Java Developer, HR), independent of the roles above. '
-                        f'Confidence is the model\'s calibrated probability (LinearSVC wrapped in '
-                        f'CalibratedClassifierCV).</div></div>',
+                        f'<div class="rs-caption">The classifier sorts a resume into one of 43 '
+                        f'categories, like Data Science, Java Developer, or HR. Confidence is the '
+                        f'model\'s calibrated probability, from a LinearSVC wrapped in '
+                        f'CalibratedClassifierCV.</div></div>',
                         unsafe_allow_html=True,
                     )
                 except Exception as e:
                     st.error(f"Error in category prediction: {str(e)}")
                     logger.error(f"Category prediction error: {e}")
 
-            with tab_fit:
-                section(_IC_SPARK, "AI fit analysis")
-                st.markdown(
-                    '<p class="rs-caption" style="margin-top:0">Retrieval-augmented generation: the most '
-                    'relevant job requirements are retrieved from a vector index, then Claude explains fit '
-                    'grounded in that evidence.</p>',
-                    unsafe_allow_html=True,
-                )
-                role = st.selectbox("Analyze against role", list(JOB_DESCRIPTIONS))
-
-                try:
-                    rag = load_rag()
-                    if anthropic_key():
-                        if st.button("Generate fit analysis", type="primary"):
-                            with st.spinner("Retrieving requirements and generating analysis..."):
-                                analysis = rag.explain_fit(tmp_file_path, role)
-                            st.markdown(analysis)
-                    else:
-                        st.info(
-                            "Set `ANTHROPIC_API_KEY` (env var, or Streamlit secret) to enable the "
-                            "Claude-generated analysis. Meanwhile, here are the requirements the "
-                            "retriever matched to this resume:"
-                        )
-                        hits = "".join(
-                            f'<div class="rs-side-item">{_IC_DOT}<span>{hit["text"]}</span></div>'
-                            for hit in rag.retrieve(text, k=5, role=role)
-                        )
-                        st.markdown(f'<div class="rs-card">{hits}</div>', unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"Error in fit analysis: {str(e)}")
-                    logger.error(f"RAG error: {e}")
-
-            with tab2:
-                section(_IC_INFO, "Résumé preview")
+            with tab_prev:
+                section(_IC_INFO, "Resume preview")
                 pdf_viewer(file_value)
 
-            with tab3:
+            with tab_text:
                 section(_IC_INFO, "Extracted text")
                 with st.expander("View full extracted text", expanded=False):
                     st.text_area("Extracted Text", text, height=400, label_visibility="collapsed")
@@ -651,8 +567,8 @@ else:
     st.markdown(
         f'<div class="rs-card" style="text-align:center; padding:34px 20px; color:var(--rs-muted)">'
         f'<div style="width:44px;height:44px;margin:0 auto 12px;color:var(--rs-primary-2)">{_IC_SCAN}</div>'
-        f'<div style="font-weight:600;color:var(--rs-text);margin-bottom:4px">Upload a résumé to begin</div>'
-        f'<div style="font-size:.9rem">Drop a PDF above to see role matches, its category, and an AI fit analysis.</div>'
+        f'<div style="font-weight:600;color:var(--rs-text);margin-bottom:4px">Upload a resume to begin</div>'
+        f'<div style="font-size:.9rem">Drop a PDF above to classify it and screen it against a job posting.</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -665,21 +581,9 @@ with st.sidebar:
 
     st.markdown(
         f'<div class="rs-side-block"><div class="rs-side-h">{_IC_INFO} How it works</div>'
-        f'<div class="rs-feature"><b>Semantic job match</b> — sentence-transformer embeddings rank '
-        f'the résumé against each open role.</div>'
-        f'<div class="rs-feature"><b>Category classifier</b> — TF-IDF + calibrated LinearSVC over '
-        f'12k+ résumés, 43 categories.</div>'
-        f'<div class="rs-feature"><b>AI fit analysis</b> — FAISS retrieval + Claude, grounded in the '
-        f'matched job requirements.</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    roles = "".join(
-        f'<div class="rs-side-item">{_IC_BRIEFCASE}<span>{title}</span></div>'
-        for title in JOB_DESCRIPTIONS
-    )
-    st.markdown(
-        f'<div class="rs-side-block"><div class="rs-side-h">{_IC_BRIEFCASE} Open roles</div>{roles}</div>',
+        f'<div class="rs-feature">A scikit-learn model sorts your resume into one of 43 categories. '
+        f'The screener reads a job posting, retrieves the requirements closest to your resume, and '
+        f'asks Claude to score the fit and tell you what to fix.</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -689,11 +593,13 @@ with st.sidebar:
         n_categories = metrics.get("n_categories", "?")
         top1 = metrics.get("holdout_top1_accuracy", 0)
         top3 = metrics.get("holdout_top3_accuracy", 0)
+        macro_f1 = metrics.get("holdout_macro_f1", 0)
+        trained = metrics.get("trained_at", "")
         st.markdown(
-            f'<div class="rs-side-block"><div class="rs-side-h">{_IC_CHART} Model</div>'
+            f'<div class="rs-side-block"><div class="rs-side-h">{_IC_CHART} Classifier</div>'
             f'<div class="rs-kpi-grid">'
             f'<div class="rs-kpi"><div class="rs-kpi-val">{n_resumes:,}</div>'
-            f'<div class="rs-kpi-label">résumés trained</div></div>'
+            f'<div class="rs-kpi-label">resumes trained</div></div>'
             f'<div class="rs-kpi"><div class="rs-kpi-val">{n_categories}</div>'
             f'<div class="rs-kpi-label">categories</div></div>'
             f'<div class="rs-kpi"><div class="rs-kpi-val">{top1:.0%}</div>'
@@ -701,6 +607,16 @@ with st.sidebar:
             f'<div class="rs-kpi"><div class="rs-kpi-val">{top3:.0%}</div>'
             f'<div class="rs-kpi-label">top-3 accuracy</div></div>'
             f'</div>'
-            f'<div class="rs-side-note" style="margin-top:10px">TF-IDF + calibrated LinearSVC.</div></div>',
+            f'<div class="rs-side-note" style="margin-top:12px">'
+            f'Macro F1 {macro_f1:.2f}, held out on the Resume-Atlas dataset. TF-IDF over 1 to 2 grams '
+            f'into a calibrated LinearSVC. Trained {trained}.</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f'<div class="rs-side-block"><div class="rs-side-h">{_IC_SPARK} Screener</div>'
+            f'<div class="rs-side-note">MiniLM sentence embeddings (384-dim) retrieve the closest '
+            f'posting requirements with a FAISS index, then Claude scores the fit and writes the '
+            f'feedback.</div></div>',
             unsafe_allow_html=True,
         )
