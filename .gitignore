@@ -27,3 +27,7 @@ Thumbs.db
 # Model cache (but keep the committed production model under models/)
 *.joblib
 !models/*.joblib
+
+# md files
+CLAUDE.md
+
