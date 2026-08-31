@@ -532,8 +532,8 @@ if file:
                 # two buttons adjacent rather than stretched across the page. The
                 # Tailor button is rendered after the screen logic so a just-finished
                 # screen enables it on the same run.
-                col_screen, col_tailor, _btn_spacer = st.columns([1, 1, 2])
-                if col_screen.button("Screen my resume", type="primary"):
+                col_screen, col_tailor, _btn_spacer = st.columns([1, 1, 3], gap="small")
+                if col_screen.button("Screen my resume", type="primary", use_container_width=True):
                     job_text, err = resolve_posting()
                     if err:
                         st.warning(err)
@@ -556,6 +556,7 @@ if file:
                 _tailor_clicked = col_tailor.button(
                     "Tailor my resume",
                     disabled=not _has_screen,
+                    use_container_width=True,
                     help="Screen your resume against a posting first, then tailor it to that posting.",
                 )
                 if _tailor_clicked and _has_screen:
