@@ -104,7 +104,16 @@ _SYSTEM = (
     "before that date, so infer availability from the graduation date rather than "
     "requiring the resume to state it. Only flag a timing or availability mismatch "
     "when the graduation date genuinely falls outside the posting's stated window, "
-    "and never invent a timing gap."
+    "and never invent a timing gap. In particular, when the graduation date is later "
+    "than the internship's term or year, the candidate is by definition still an "
+    "enrolled student before, during, and after the internship and returns to their "
+    "degree program once it ends. In that case you must NOT raise availability, "
+    "eligibility, full-time student status, a required number of weeks (for example "
+    "12 to 14 weeks), or a 'returning to a degree program after completion' "
+    "requirement as a gap, a Missing bullet, or a concern, even when the resume never "
+    "states it explicitly; treat every one of those as already satisfied by the "
+    "graduation date. Never list an unstated availability or enrollment requirement "
+    "as Missing when a later graduation date already implies it."
 )
 
 
