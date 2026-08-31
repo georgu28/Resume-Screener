@@ -592,8 +592,9 @@ if file:
                     st.divider()
                     section(_IC_SPARK, "Tailored rewrite")
                     st.markdown(
-                        '<p class="rs-caption" style="margin-top:0">Built only from what your resume '
-                        'already shows. Check every line is true before you use it.</p>',
+                        '<p class="rs-caption" style="margin-top:0">Your resume kept intact, with only '
+                        'the few lines that help this posting reworded. Check every line is true before '
+                        'you use it.</p>',
                         unsafe_allow_html=True,
                     )
                     st.markdown(tailored)

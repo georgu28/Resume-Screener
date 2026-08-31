@@ -143,35 +143,16 @@ def _generate(system: str, user: str, max_tokens: int) -> str:
 
 
 _SYSTEM = (
-    "You are an experienced technical recruiter and the ATS that screens resumes "
-    "before a human sees them. Judge how well a candidate's resume matches a "
-    "specific job posting, using ONLY the posting and the resume text provided. "
-    "Weigh what actually decides screening: keyword and skill match to the posting "
-    "(exact tools, titles, and certifications), coverage of the required "
-    "qualifications, relevant recent titles, and quantified impact. Cite concrete "
-    "evidence from the resume. Never invent experience the resume does not show; if "
-    "a requirement has no support, it is a gap. Be specific and honest, not "
-    "flattering.\n\n"
-    "Reason carefully about graduation dates and internship availability. Treat "
-    "academic seasons as month ranges: Spring is about January to May, Summer about "
-    "May to August, Fall about September to December, Winter about December to "
-    "February. A graduation date matches a required window when it falls anywhere "
-    "inside that window, including at a season boundary; for example, a May 2028 "
-    "graduation is within a 'Spring/Summer 2028' window. A student graduating in a "
-    "given term is available for internships and co-ops in the terms and summers "
-    "before that date, so infer availability from the graduation date rather than "
-    "requiring the resume to state it. Only flag a timing or availability mismatch "
-    "when the graduation date genuinely falls outside the posting's stated window, "
-    "and never invent a timing gap. In particular, when the graduation date is later "
-    "than the internship's term or year, the candidate is by definition still an "
-    "enrolled student before, during, and after the internship and returns to their "
-    "degree program once it ends. In that case you must NOT raise availability, "
-    "eligibility, full-time student status, a required number of weeks (for example "
-    "12 to 14 weeks), or a 'returning to a degree program after completion' "
-    "requirement as a gap, a Missing bullet, or a concern, even when the resume never "
-    "states it explicitly; treat every one of those as already satisfied by the "
-    "graduation date. Never list an unstated availability or enrollment requirement "
-    "as Missing when a later graduation date already implies it."
+    "You are a technical recruiter and the ATS that screens resumes before a human "
+    "sees them. Score how well a resume matches a specific job posting, using ONLY "
+    "the posting and resume provided. Judge on keyword and skill match, coverage of "
+    "the required qualifications, relevant titles, and quantified impact. Cite real "
+    "evidence from the resume, never invent it; a requirement with no support is a gap.\n\n"
+    "Ignore graduation date, class year, and internship timing or availability "
+    "completely. Never raise them as a gap, a concern, or a Missing item, and never "
+    "let them affect the score.\n\n"
+    "Write like a person: plain, direct, specific. Short sentences, no filler, no "
+    "flattery, no hedging. Plain punctuation, no em or en dashes."
 )
 
 
@@ -179,24 +160,15 @@ def _build_prompt(resume_text: str, job_text: str, matched: List[str]) -> str:
     evidence = "\n".join(f"- {m}" for m in matched) or "(none retrieved)"
     return (
         f"JOB POSTING:\n{job_text[:6000]}\n\n"
-        f"REQUIREMENTS THIS RESUME ALREADY LOOKS CLOSE TO (retrieved):\n{evidence}\n\n"
+        f"REQUIREMENTS THIS RESUME LOOKS CLOSE TO (retrieved):\n{evidence}\n\n"
         f"RESUME:\n{resume_text[:5000]}\n\n"
-        "Respond in GitHub-flavored markdown with EXACTLY these parts:\n"
-        "First line, nothing else on it: `SCORE: <0-100>` — how a recruiter/ATS "
-        "would rate this resume's match to THIS posting.\n"
-        "**Verdict** - one sentence: is this likely to pass the initial screen, and why.\n"
-        "**Matched** - 3-6 bullets, each naming the posting requirement briefly (a short "
-        "label, not a long verbatim quote) plus the resume evidence that proves it. Keep "
-        "each bullet to one line so every section below still gets written.\n"
-        "**Missing** - 3-6 bullets of required or important keywords, skills, or "
-        "qualifications from the posting that the resume does not show. These are the "
-        "gaps that sink an ATS match.\n"
-        "**Changes to make** - 3-6 concrete edits: exact keywords to add (only where the "
-        "resume can truthfully support them), bullets to reword, things to surface in the "
-        "summary or skills section.\n"
-        "**Do this first** - the 2-3 highest-impact changes, ranked. Never suggest "
-        "fabricating experience.\n\n"
-        "Write with plain punctuation. Do not use em dashes or en dashes."
+        "Reply in GitHub-flavored markdown. Be concise, no preamble. Use these parts:\n"
+        "First line, nothing else: `SCORE: <0-100>` (recruiter/ATS match to THIS posting).\n"
+        "**Verdict** - one plain sentence: does it pass the screen, and why.\n"
+        "**Matched** - 3-4 one-line bullets: requirement, then the resume evidence for it.\n"
+        "**Missing** - 3-4 one-line bullets: required skills or keywords the resume lacks.\n"
+        "**Fix first** - 2-3 ranked, concrete edits (keywords to add only if true, bullets "
+        "to reword). Never suggest fabricating experience."
     )
 
 
@@ -249,15 +221,18 @@ def screen(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
 
 
 _TAILOR_SYSTEM = (
-    "You are a resume writer helping a candidate tailor their existing resume to a "
-    "specific job posting. Rewrite ONLY what the resume already contains: reorder, "
-    "reword, and emphasize the candidate's real experience, projects, and skills so "
-    "they mirror the posting's language and lead with the most relevant "
-    "qualifications. Never invent or exaggerate experience, employers, job titles, "
-    "dates, metrics, degrees, or skills. Keep every number the resume gives and do "
-    "not add new ones. If the posting wants something the resume does not clearly "
-    "support, do not put it in the rewrite; list it separately as something for the "
-    "candidate to add only if it is true. Use plain punctuation and no em dashes."
+    "You tailor a candidate's existing resume to a specific job posting by making the "
+    "SMALLEST changes that improve the match. Keep as much of the original as possible: "
+    "preserve its structure, section order, wording, and every fact verbatim, and only "
+    "touch a line when changing it clearly helps this posting. Edit by rewording an "
+    "existing bullet to mirror the posting's language, or by adding a keyword the resume "
+    "already supports. Do not rewrite lines that are already fine, do not drop content, "
+    "and do not restructure.\n\n"
+    "Never invent or exaggerate anything: no new experience, employers, titles, dates, "
+    "metrics, degrees, or skills, and no new numbers. If the posting wants something the "
+    "resume does not clearly support, leave it out of the resume and list it separately "
+    "for the candidate to add only if it is true.\n\n"
+    "Plain punctuation, no em or en dashes."
 )
 
 
@@ -265,28 +240,27 @@ def _tailor_prompt(resume_text: str, job_text: str, matched: List[str]) -> str:
     evidence = "\n".join(f"- {m}" for m in matched) or "(none retrieved)"
     return (
         f"JOB POSTING:\n{job_text[:6000]}\n\n"
-        f"REQUIREMENTS THIS RESUME IS CLOSEST TO (retrieved):\n{evidence}\n\n"
+        f"REQUIREMENTS THIS RESUME LOOKS CLOSE TO (retrieved):\n{evidence}\n\n"
         f"CURRENT RESUME:\n{resume_text[:5500]}\n\n"
-        "Produce, in GitHub-flavored markdown with these parts:\n"
-        "**Summary** - a 2 to 3 line summary targeting this role, drawn only from the "
-        "resume.\n"
-        "**Tailored bullets** - rewrite the most relevant experience and project bullets "
-        "to mirror the posting's language and lead with impact. Keep every fact truthful "
-        "and keep any numbers the resume already gives.\n"
-        "**Skills line** - one skills line that emphasizes the posting's keywords the "
-        "resume genuinely supports.\n"
-        "**Add only if true** - keywords, skills, or details the posting wants that the "
-        "resume does not clearly show. The candidate should add these only if accurate. "
-        "Never fabricate."
+        "Reply in GitHub-flavored markdown with these parts:\n"
+        "**Tailored resume** - the FULL resume, kept as close to the original as possible. "
+        "Reproduce every section and line unchanged except the few you reword or where you "
+        "add a keyword the resume already supports. Keep all facts and numbers exactly.\n"
+        "**What changed** - a short bulleted list of each edit you made and why it fits the "
+        "posting. If you changed nothing, say so.\n"
+        "**Add only if true** - keywords or details the posting wants that the resume does "
+        "not support. The candidate adds these only if accurate. Never fabricate."
     )
 
 
 def tailor(resume_text: str, job_text: str, embedder: SentenceTransformer, k: int = 8) -> str:
     """
-    Rewrite the resume to fit a posting, using only what the resume already shows.
+    Tailor the resume to a posting with the smallest truthful edits.
 
-    Returns markdown: a targeted summary, reworked bullets, a skills line, and a
-    separate list of things to add only if they are true. Needs ANTHROPIC_API_KEY.
+    Returns markdown: the full resume kept as close to the original as possible
+    (only the few lines worth rewording or keyword-tagging are touched), a short
+    list of what changed, and a separate list of things to add only if they are
+    true. Needs ANTHROPIC_API_KEY.
     """
     if not _has_key():
         return "Set ANTHROPIC_API_KEY to generate a tailored rewrite of your resume."
@@ -297,7 +271,9 @@ def tailor(resume_text: str, job_text: str, embedder: SentenceTransformer, k: in
     import anthropic
 
     try:
-        return _generate(_TAILOR_SYSTEM, _tailor_prompt(resume_text, job_text, matched), max_tokens=2400)
+        # The full resume is echoed back, so give it room; _generate grows the
+        # budget further if a long resume still truncates.
+        return _generate(_TAILOR_SYSTEM, _tailor_prompt(resume_text, job_text, matched), max_tokens=3200)
     except anthropic.AuthenticationError:
         return "That ANTHROPIC_API_KEY was rejected. Check the key and try again."
     except anthropic.AnthropicError as e:
