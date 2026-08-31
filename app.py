@@ -505,6 +505,9 @@ if file:
                             return None, str(e)
                     return None, "Add a job link or paste the description first."
 
+                # Screen and Tailor sit side by side. Columns are containers, so the
+                # Tailor button (written further down) still lands in the right column
+                # even though its render is deferred until a screening exists.
                 col_screen, col_tailor = st.columns(2)
                 if col_screen.button("Screen my resume", type="primary"):
                     job_text, err = resolve_posting()
@@ -522,17 +525,19 @@ if file:
                             st.error(f"The screen failed: {str(e)}")
                             logger.error(f"Screener error: {e}")
 
-                if col_tailor.button("Tailor my resume"):
-                    job_text, err = resolve_posting()
-                    if err:
-                        st.warning(err)
+                # Tailoring to a posting the resume hasn't been screened against makes no
+                # sense, so this button only appears once a screening has finished. It
+                # reuses the exact posting that was screened.
+                if st.session_state.get("rs_screen") and col_tailor.button("Tailor my resume"):
+                    job_text = st.session_state.get("rs_job_text")
+                    if not job_text:
+                        st.warning("Screen your resume against a posting first.")
                     else:
                         try:
                             with st.spinner("Rewriting your resume for this posting..."):
                                 st.session_state["rs_tailor"] = screener.tailor(
                                     text, job_text, load_matcher().model
                                 )
-                            st.session_state["rs_job_text"] = job_text
                         except Exception as e:
                             st.error(f"The tailoring failed: {str(e)}")
                             logger.error(f"Tailor error: {e}")
