@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 #   claude-opus-5     ($5/$25)  — highest quality, overkill for this task
 MODEL = "claude-sonnet-5"
 EMBED_MODEL = "all-MiniLM-L6-v2"
-MAX_CHUNK_CHARS = 300
+# Job postings are line-per-requirement, so keep passages small enough that a
+# single requirement is its own chunk (better retrieval granularity) rather than
+# bundling several requirements into one coarse passage.
+MAX_CHUNK_CHARS = 120
 
 
 def _chunk(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
