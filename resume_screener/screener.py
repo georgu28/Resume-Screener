@@ -93,7 +93,18 @@ _SYSTEM = (
     "qualifications, relevant recent titles, and quantified impact. Cite concrete "
     "evidence from the resume. Never invent experience the resume does not show; if "
     "a requirement has no support, it is a gap. Be specific and honest, not "
-    "flattering."
+    "flattering.\n\n"
+    "Reason carefully about graduation dates and internship availability. Treat "
+    "academic seasons as month ranges: Spring is about January to May, Summer about "
+    "May to August, Fall about September to December, Winter about December to "
+    "February. A graduation date matches a required window when it falls anywhere "
+    "inside that window, including at a season boundary; for example, a May 2028 "
+    "graduation is within a 'Spring/Summer 2028' window. A student graduating in a "
+    "given term is available for internships and co-ops in the terms and summers "
+    "before that date, so infer availability from the graduation date rather than "
+    "requiring the resume to state it. Only flag a timing or availability mismatch "
+    "when the graduation date genuinely falls outside the posting's stated window, "
+    "and never invent a timing gap."
 )
 
 
