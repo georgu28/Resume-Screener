@@ -252,9 +252,15 @@ h1, h2, h3, h4 { color: var(--rs-text); letter-spacing: -0.01em; font-weight: 60
 /* --- File uploader -------------------------------------------------------- */
 [data-testid="stFileUploaderDropzone"] {
     background: var(--rs-surface) !important; border: 1.5px dashed var(--rs-border); border-radius: var(--rs-radius);
-    transition: border-color .2s, background .2s;
+    min-height: 132px; padding: 14px 20px; transition: border-color .2s, background .2s;
 }
 [data-testid="stFileUploaderDropzone"]:hover { border-color: var(--rs-primary-2) !important; background: var(--rs-surface-2) !important; }
+/* Tooltip popover (e.g. the Dark mode help) kept a hardcoded white bg. */
+[data-testid="stTooltipContent"] {
+    background: var(--rs-surface) !important; border: 1px solid var(--rs-border) !important;
+    box-shadow: var(--rs-shadow) !important;
+}
+[data-testid="stTooltipContent"], [data-testid="stTooltipContent"] * { color: var(--rs-text) !important; }
 /* The chip shown after a file is uploaded (kept a light-gray bg by default). */
 [data-testid="stFileChip"] {
     background: var(--rs-surface) !important; border: 1px solid var(--rs-border) !important;
@@ -445,6 +451,13 @@ if file:
     try:
         file_value = file.getvalue()
 
+        # A new upload invalidates any stored screen/tailor results.
+        _fid = f"{file.name}:{file.size}"
+        if st.session_state.get("rs_file_id") != _fid:
+            st.session_state["rs_file_id"] = _fid
+            for _k in ("rs_screen", "rs_tailor", "rs_job_text"):
+                st.session_state.pop(_k, None)
+
         # Create temporary file for processing
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(file_value)
@@ -479,40 +492,80 @@ if file:
                 )
                 pasted_jd = st.text_area("Or paste the job description", height=150)
 
-                if st.button("Screen my resume", type="primary"):
-                    job_text = pasted_jd.strip()
-                    if not job_text and posting_url.strip():
+                def resolve_posting():
+                    """Return (job_text, error) from the pasted text or the URL."""
+                    jt = pasted_jd.strip()
+                    if jt:
+                        return jt, None
+                    if posting_url.strip():
                         try:
                             with st.spinner("Reading the posting..."):
-                                job_text = screener.fetch_job_posting(posting_url)
+                                return screener.fetch_job_posting(posting_url), None
                         except screener.PostingFetchError as e:
-                            st.warning(str(e))
+                            return None, str(e)
+                    return None, "Add a job link or paste the description first."
 
-                    if not job_text:
-                        st.info("Add a job link or paste the description, then run the screen.")
+                col_screen, col_tailor = st.columns(2)
+                if col_screen.button("Screen my resume", type="primary"):
+                    job_text, err = resolve_posting()
+                    if err:
+                        st.warning(err)
                     else:
                         try:
                             with st.spinner("Scoring your resume against the posting..."):
-                                result = screener.screen(text, job_text, load_matcher().model)
-
-                            if result["score"] is not None:
-                                st.markdown(score_card(result["score"]), unsafe_allow_html=True)
-                            if result["feedback"]:
-                                st.markdown(result["feedback"])
-                            if result["score"] is None and result["matched"]:
-                                st.markdown(
-                                    '<div class="rs-caption" style="margin-top:14px">Requirements your '
-                                    'resume already matches:</div>',
-                                    unsafe_allow_html=True,
+                                st.session_state["rs_screen"] = screener.screen(
+                                    text, job_text, load_matcher().model
                                 )
-                                hits = "".join(
-                                    f'<div class="rs-side-item">{_IC_DOT}<span>{m}</span></div>'
-                                    for m in result["matched"]
-                                )
-                                st.markdown(f'<div class="rs-card">{hits}</div>', unsafe_allow_html=True)
+                            st.session_state["rs_job_text"] = job_text
+                            st.session_state.pop("rs_tailor", None)
                         except Exception as e:
                             st.error(f"The screen failed: {str(e)}")
                             logger.error(f"Screener error: {e}")
+
+                if col_tailor.button("Tailor my resume"):
+                    job_text, err = resolve_posting()
+                    if err:
+                        st.warning(err)
+                    else:
+                        try:
+                            with st.spinner("Rewriting your resume for this posting..."):
+                                st.session_state["rs_tailor"] = screener.tailor(
+                                    text, job_text, load_matcher().model
+                                )
+                            st.session_state["rs_job_text"] = job_text
+                        except Exception as e:
+                            st.error(f"The tailoring failed: {str(e)}")
+                            logger.error(f"Tailor error: {e}")
+
+                # Render the stored screen result (survives the tailor button rerun).
+                result = st.session_state.get("rs_screen")
+                if result:
+                    if result["score"] is not None:
+                        st.markdown(score_card(result["score"]), unsafe_allow_html=True)
+                    if result["feedback"]:
+                        st.markdown(result["feedback"])
+                    if result["score"] is None and result["matched"]:
+                        st.markdown(
+                            '<div class="rs-caption" style="margin-top:14px">Requirements your '
+                            'resume already matches:</div>',
+                            unsafe_allow_html=True,
+                        )
+                        hits = "".join(
+                            f'<div class="rs-side-item">{_IC_DOT}<span>{m}</span></div>'
+                            for m in result["matched"]
+                        )
+                        st.markdown(f'<div class="rs-card">{hits}</div>', unsafe_allow_html=True)
+
+                tailored = st.session_state.get("rs_tailor")
+                if tailored:
+                    st.divider()
+                    section(_IC_SPARK, "Tailored rewrite")
+                    st.markdown(
+                        '<p class="rs-caption" style="margin-top:0">Built only from what your resume '
+                        'already shows. Check every line is true before you use it.</p>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(tailored)
 
             with tab_cat:
                 # Broad resume-category classifier (43 categories).
@@ -564,13 +617,9 @@ if file:
         if tmp_file_path and os.path.exists(tmp_file_path):
             os.unlink(tmp_file_path)
 else:
-    st.markdown(
-        f'<div class="rs-card" style="text-align:center; padding:34px 20px; color:var(--rs-muted)">'
-        f'<div style="width:44px;height:44px;margin:0 auto 12px;color:var(--rs-primary-2)">{_IC_SCAN}</div>'
-        f'<div style="font-weight:600;color:var(--rs-text);margin-bottom:4px">Upload a resume to begin</div>'
-        f'<div style="font-size:.9rem">Drop a PDF above to classify it and screen it against a job posting.</div>'
-        f'</div>',
-        unsafe_allow_html=True,
+    st.caption(
+        "Click the box above or drag a PDF in to begin, then classify it and screen it "
+        "against a job posting."
     )
 
 # ---------------------------------------------------------------------------
